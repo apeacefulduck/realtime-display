@@ -115,14 +115,13 @@ String weatherLabel = "";
 int weatherTemperature = 0;
 int weatherHumidity = 0;
 int weatherWind = 0;
-const uint8_t WEATHER_DAYS = 7;
+const uint8_t WEATHER_DAYS = 4;
 String weatherDay[WEATHER_DAYS];
 String weatherDayCondition[WEATHER_DAYS];
 int weatherDayMax[WEATHER_DAYS];
 int weatherDayMin[WEATHER_DAYS];
 int weatherDayRain[WEATHER_DAYS];
 uint8_t weatherDayCount = 0;
-uint8_t weatherPage = 0;
 uint8_t weatherAnimationFrame = 0;
 uint32_t lastWeatherAnimationAt = 0;
 
@@ -602,23 +601,40 @@ void renderWeatherScreen() {
   }
 
   drawWeatherAnimation(weatherCondition, contentX() + 48, contentY() + 52);
-  drawSimpleMetric(weatherLabel, String(weatherTemperature) + " C", contentY() + 14, COLOR_WARNING);
 
   u8g2Fonts.setFont(u8g2_font_7x13_te);
+  drawUtf8String(String("Bugun - ") + weatherLabel, contentX() + 104, contentY() + 18, COLOR_TEXT_SECOND);
+  u8g2Fonts.setFont(u8g2_font_10x20_te);
+  drawUtf8String(String(weatherTemperature) + " C", contentX() + 104, contentY() + 48, COLOR_WARNING);
+  u8g2Fonts.setFont(u8g2_font_7x13_te);
   drawUtf8String("Nem " + String(weatherHumidity) + "%  Rüzgar " + String(weatherWind) + " km/s",
-                 contentX() + 110, contentY() + 88, COLOR_TEXT_SECOND);
+                 contentX() + 104, contentY() + 78, COLOR_TEXT_SECOND);
 
   if (weatherDayCount > 0) {
-    if (weatherPage >= weatherDayCount) weatherPage = 0;
-    int16_t y = contentY() + 124;
-    drawUtf8String(weatherDay[weatherPage] + "  " + weatherDayMax[weatherPage] + "/" + weatherDayMin[weatherPage] + " C",
-                   contentX(), y, COLOR_TEXT_PRIMARY);
-    drawUtf8String("Yağış %" + String(weatherDayRain[weatherPage]) + "  " + weatherDayCondition[weatherPage],
-                   contentX(), y + 22, COLOR_ACCENT_BLUE);
+    int16_t forecastY = contentY() + 112;
+    int16_t todayW = 92;
+    int16_t gap = 6;
+    int16_t smallW = (contentW() - todayW - gap * 3) / 3;
+
+    tft.drawRoundRect(contentX(), forecastY - 14, todayW, 58, 5, COLOR_ACCENT_BLUE);
+    u8g2Fonts.setFont(u8g2_font_6x12_te);
+    drawUtf8String("Bugun", contentX() + 7, forecastY, COLOR_ACCENT_BLUE);
+    u8g2Fonts.setFont(u8g2_font_10x20_te);
+    drawUtf8String(String(weatherDayMax[0]) + "/" + String(weatherDayMin[0]), contentX() + 7, forecastY + 24, COLOR_TEXT_PRIMARY);
+    u8g2Fonts.setFont(u8g2_font_6x12_te);
+    drawUtf8String(String("%") + String(weatherDayRain[0]) + " yagis", contentX() + 7, forecastY + 40, COLOR_TEXT_SECOND);
+
+    for (uint8_t i = 1; i < weatherDayCount && i < WEATHER_DAYS; i++) {
+      int16_t x = contentX() + todayW + gap + (i - 1) * (smallW + gap);
+      tft.drawRoundRect(x, forecastY - 8, smallW, 48, 4, COLOR_BORDER);
+      u8g2Fonts.setFont(u8g2_font_6x12_te);
+      drawUtf8String(weatherDay[i], x + 5, forecastY + 2, COLOR_TEXT_SECOND);
+      drawUtf8String(String(weatherDayMax[i]) + "/" + String(weatherDayMin[i]), x + 5, forecastY + 20, COLOR_TEXT_PRIMARY);
+      drawUtf8String(String("%") + String(weatherDayRain[i]), x + 5, forecastY + 36, COLOR_ACCENT_BLUE);
+    }
   }
 
-  drawFooter("Hava - " + String(weatherPage + 1) + "/" + String(max((uint8_t)1, weatherDayCount)),
-             accentForState(currentState));
+  drawFooter("Hava - otomatik takip", accentForState(currentState));
 }
 
 void renderSleepScreen() {
@@ -736,7 +752,6 @@ void applyWeatherPayload(JsonDocument &document) {
 
   if (!weatherEnabled) {
     weatherDayCount = 0;
-    weatherPage = 0;
   } else {
     weatherCondition = (const char *)(document["condition"] | "unknown");
     weatherLabel = (const char *)(document["label"] | "Hava");
@@ -756,7 +771,6 @@ void applyWeatherPayload(JsonDocument &document) {
       weatherDayRain[index] = day["rain"] | 0;
       index++;
     }
-    if (weatherPage >= weatherDayCount) weatherPage = 0;
   }
 
   if (currentScreen == SCREEN_WEATHER || currentScreen == SCREEN_HOME) {
@@ -812,16 +826,6 @@ void moveShoppingPage(int8_t delta) {
   if (next >= pageCount) next = 0;
   if (next == shoppingPage) return;
   shoppingPage = next;
-  animateScreenChange(delta);
-}
-
-void moveWeatherPage(int8_t delta) {
-  if (currentScreen != SCREEN_WEATHER || weatherDayCount == 0) return;
-  int8_t next = (int8_t)weatherPage + delta;
-  if (next < 0) next = weatherDayCount - 1;
-  if (next >= weatherDayCount) next = 0;
-  if (next == weatherPage) return;
-  weatherPage = next;
   animateScreenChange(delta);
 }
 
@@ -899,7 +903,6 @@ void handleJoystick() {
   } else if (xDir != 0) {
     lastJoystickMoveAt = now;
     moveShoppingPage(xDir);
-    moveWeatherPage(xDir);
   }
 }
 

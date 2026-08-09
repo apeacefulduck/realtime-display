@@ -29,6 +29,7 @@ SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 SPOTIFY_NOW_PLAYING_URL = "https://api.spotify.com/v1/me/player/currently-playing"
 SPOTIFY_SCOPES = "user-read-currently-playing user-read-playback-state"
 OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+WEATHER_FORECAST_DAYS = 4
 
 spotify_state: str | None = None
 spotify_tokens: dict[str, Any] = {}
@@ -275,7 +276,7 @@ async def weather(lat: float = 41.0082, lon: float = 28.9784) -> dict[str, Any]:
         "timezone": "auto",
         "current": "temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m",
         "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
-        "forecast_days": 7,
+        "forecast_days": WEATHER_FORECAST_DAYS,
     }
 
     async with httpx.AsyncClient(timeout=10) as client:
@@ -296,7 +297,7 @@ async def weather(lat: float = 41.0082, lon: float = 28.9784) -> dict[str, Any]:
     min_temps = daily.get("temperature_2m_min", [])
     rain_probs = daily.get("precipitation_probability_max", [])
 
-    for index, date_text in enumerate(dates[:7]):
+    for index, date_text in enumerate(dates[:WEATHER_FORECAST_DAYS]):
         day_code = int(codes[index]) if index < len(codes) else -1
         day_condition, day_label = weather_label(day_code)
         forecast.append(

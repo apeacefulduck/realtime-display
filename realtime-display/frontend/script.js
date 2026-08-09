@@ -14,7 +14,6 @@ const shoppingTab = document.querySelector("#shoppingTab");
 const spotifyTab = document.querySelector("#spotifyTab");
 const shoppingControls = document.querySelector("#shoppingControls");
 const spotifyControls = document.querySelector("#spotifyControls");
-const spotifySwitch = document.querySelector("#spotifySwitch");
 const refreshSpotifyButton = document.querySelector("#refreshSpotifyButton");
 const weatherTab = document.querySelector("#weatherTab");
 const weatherControls = document.querySelector("#weatherControls");
@@ -23,7 +22,6 @@ const weatherIcon = document.querySelector("#weatherIcon");
 const weatherTemp = document.querySelector("#weatherTemp");
 const weatherLabel = document.querySelector("#weatherLabel");
 const weatherForecast = document.querySelector("#weatherForecast");
-const weatherSwitch = document.querySelector("#weatherSwitch");
 const refreshWeatherButton = document.querySelector("#refreshWeatherButton");
 const weatherLat = document.querySelector("#weatherLat");
 const weatherLon = document.querySelector("#weatherLon");
@@ -36,6 +34,7 @@ let activePanel = "shopping";
 const shoppingItems = [];
 const maxItems = 8;
 const apiBaseUrl = "https://realtime-display.onrender.com";
+const forecastPreviewDays = 4;
 
 function setConnectionState(isConnected) {
   connectionStatus.classList.toggle("connected", isConnected);
@@ -45,9 +44,7 @@ function setConnectionState(isConnected) {
   }`;
   sendButton.disabled = !isConnected;
   clearButton.disabled = !isConnected;
-  spotifySwitch.disabled = !isConnected;
   refreshSpotifyButton.disabled = !isConnected;
-  weatherSwitch.disabled = !isConnected;
   refreshWeatherButton.disabled = !isConnected;
 }
 
@@ -67,9 +64,9 @@ function setActivePanel(panel) {
   weatherPreview.hidden = !isWeather;
   previewTitle.textContent = isWeather ? "WEATHER" : isSpotify ? "SPOTIFY" : "SHOPPING LIST";
   itemCount.textContent = isWeather
-    ? (weatherSwitch.checked ? "ON" : "OFF")
+    ? "AUTO"
     : isSpotify
-      ? (spotifySwitch.checked ? "ON" : "OFF")
+      ? "AUTO"
       : shoppingItems.length.toString();
 }
 
@@ -116,6 +113,8 @@ function connectSocket() {
   socket.addEventListener("open", () => {
     window.clearTimeout(reconnectTimer);
     setConnectionState(true);
+    setSpotifyPolling(true);
+    setWeatherPolling(true);
   });
 
   socket.addEventListener("close", () => {
@@ -138,15 +137,7 @@ function sendShoppingList() {
 }
 
 function renderSpotify(data) {
-  const enabled = spotifySwitch.checked;
-  itemCount.textContent = enabled ? "ON" : "OFF";
-
-  if (!enabled) {
-    spotifyTrack.textContent = "Spotify kapali";
-    spotifyArtist.textContent = "Switch'i acinca ESP32'ye gonderilir";
-    spotifyAlbum.textContent = "";
-    return;
-  }
+  itemCount.textContent = "AUTO";
 
   if (!data?.playing) {
     spotifyTrack.textContent = "Calan sarki yok";
@@ -170,13 +161,13 @@ async function fetchSpotifyCurrent() {
 
 function iconForCondition(condition) {
   return {
-    clear: "☀",
-    partly_cloudy: "◐",
-    cloudy: "☁",
-    fog: "≋",
-    rain: "╲",
+    clear: "SUN",
+    partly_cloudy: "PART",
+    cloudy: "CLD",
+    fog: "FOG",
+    rain: "RAIN",
     snow: "*",
-    storm: "ϟ",
+    storm: "STORM",
   }[condition] || "?";
 }
 
@@ -205,6 +196,7 @@ function createWeatherEffect(condition) {
     const particle = document.createElement("span");
     particle.style.setProperty("--i", index);
     particle.style.setProperty("--x", `${8 + ((index * 19) % 84)}%`);
+    particle.style.setProperty("--y", `${12 + ((index * 23) % 60)}%`);
     particle.style.setProperty("--delay", `${(index % 7) * -0.22}s`);
     effect.appendChild(particle);
   }
@@ -213,18 +205,7 @@ function createWeatherEffect(condition) {
 }
 
 function renderWeather(data) {
-  const enabled = weatherSwitch.checked;
-  itemCount.textContent = enabled ? "ON" : "OFF";
-
-  if (!enabled) {
-    setWeatherConditionClass("unknown");
-    weatherPreview.querySelectorAll(".weather-effect").forEach((effect) => effect.remove());
-    weatherIcon.textContent = "OFF";
-    weatherTemp.textContent = "-- C";
-    weatherLabel.textContent = "Switch'i acinca ESP32'ye gonderilir";
-    weatherForecast.innerHTML = "";
-    return;
-  }
+  itemCount.textContent = "AUTO";
 
   if (!data) {
     setWeatherConditionClass("unknown");
@@ -244,11 +225,12 @@ function renderWeather(data) {
   weatherPreview.querySelectorAll(".weather-effect").forEach((effect) => effect.remove());
   weatherForecast.before(createWeatherEffect(data.condition));
 
-  for (const day of data.forecast || []) {
+  for (const [index, day] of (data.forecast || []).slice(0, forecastPreviewDays).entries()) {
     const item = document.createElement("div");
     item.className = "forecast-day";
+    if (index === 0) item.classList.add("today");
     item.classList.add(`condition-${day.condition || "unknown"}`);
-    item.innerHTML = `<span>${day.day}</span><strong>${day.max}/${day.min} C</strong><small>${iconForCondition(day.condition)} ${day.rain}%</small>`;
+    item.innerHTML = `<span>${index === 0 ? "Bugun" : day.day}</span><strong>${day.max}/${day.min} C</strong><small>${iconForCondition(day.condition)} ${day.rain}%</small>`;
     weatherForecast.appendChild(item);
   }
 }
@@ -264,12 +246,6 @@ async function fetchWeather() {
 }
 
 async function sendWeatherCurrent() {
-  if (!weatherSwitch.checked) {
-    renderWeather(null);
-    sendSocketPayload({ type: "weather", enabled: false });
-    return;
-  }
-
   try {
     const data = await fetchWeather();
     renderWeather(data);
@@ -292,12 +268,6 @@ function setWeatherPolling(enabled) {
 }
 
 async function sendSpotifyCurrent() {
-  if (!spotifySwitch.checked) {
-    renderSpotify(null);
-    sendSocketPayload({ type: "spotify", enabled: false });
-    return;
-  }
-
   try {
     const data = await fetchSpotifyCurrent();
     renderSpotify(data);
@@ -358,9 +328,7 @@ clearButton.addEventListener("click", clearShoppingList);
 shoppingTab.addEventListener("click", () => setActivePanel("shopping"));
 spotifyTab.addEventListener("click", () => setActivePanel("spotify"));
 weatherTab.addEventListener("click", () => setActivePanel("weather"));
-spotifySwitch.addEventListener("change", () => setSpotifyPolling(spotifySwitch.checked));
 refreshSpotifyButton.addEventListener("click", sendSpotifyCurrent);
-weatherSwitch.addEventListener("change", () => setWeatherPolling(weatherSwitch.checked));
 refreshWeatherButton.addEventListener("click", sendWeatherCurrent);
 itemInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
