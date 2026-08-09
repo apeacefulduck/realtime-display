@@ -243,7 +243,7 @@ async def spotify_current() -> dict[str, Any]:
     image_url = images[-1]["url"] if images else "" # En küçük boyut
 
     # Resmi indirip RGB565 base64'e çevir
-    image_raw_b64 = await fetch_and_convert_album_art(image_url, target_size=(80, 80))
+    image_raw_b64 = await fetch_and_convert_album_art(image_url, target_size=(48, 48))
 
     return {
         "connected": True,

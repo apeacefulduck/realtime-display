@@ -272,13 +272,14 @@ async function sendSpotifyCurrent() {
     const data = await fetchSpotifyCurrent();
     renderSpotify(data);
     sendSocketPayload({
-      type: "spotify",
-      enabled: true,
-      playing: data.playing,
-      title: data.title || "",
-      artist: data.artist || "",
-      album: data.album || "",
-    });
+  type: "spotify",
+  enabled: true,
+  playing: data.playing,
+  title: data.title || "",
+  artist: data.artist || "",
+  album: data.album || "",
+  image_raw: data.image_raw || "",
+});
   } catch (error) {
     spotifyTrack.textContent = "Spotify baglantisi gerekli";
     spotifyArtist.textContent = "Spotify Bagla ile hesabi yetkilendir";

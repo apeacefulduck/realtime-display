@@ -662,7 +662,7 @@ void renderSpotifyScreen() {
 
   if (spotifyImage.length() > 0) {
     size_t outputLength;
-    unsigned char *decoded = (unsigned char *)malloc(12800);
+    unsigned char *decoded = (unsigned char *)malloc(4608);
     if (decoded != NULL) {
       mbedtls_base64_decode(decoded, 12800, &outputLength, (const unsigned char *)spotifyImage.c_str(), spotifyImage.length());
       tft.drawRGBBitmap(contentX(), contentY() + 28, (uint16_t *)decoded, 80, 80);
@@ -670,7 +670,7 @@ void renderSpotifyScreen() {
     }
   }
 
-  int16_t textX = contentX() + 90;
+  int16_t textX = contentX() + 58;
 
   u8g2Fonts.setFont(u8g2_font_10x20_te);
   drawUtf8String(spotifyTitle, textX, contentY() + 44, COLOR_TEXT_PRIMARY);
