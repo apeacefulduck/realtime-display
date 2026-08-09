@@ -45,7 +45,7 @@
 #include <Fonts/FreeSansBold12pt7b.h>   // Header / logo ("HomeFlow")
 #include <Fonts/FreeSansBold9pt7b.h>    // Empty-state / connecting messages
 #include <Fonts/FreeSans9pt7b.h>        // List items / status / footer
-
+#include <mbedtls/base64.h>
 // ============================================================================
 // NETWORK CONFIG — UNCHANGED
 // ============================================================================
@@ -109,6 +109,7 @@ bool spotifyPlaying = false;
 String spotifyTitle = "";
 String spotifyArtist = "";
 String spotifyAlbum = "";
+String spotifyImage = ""; 
 bool weatherEnabled = false;
 String weatherCondition = "";
 String weatherLabel = "";
@@ -659,14 +660,27 @@ void renderSpotifyScreen() {
     return;
   }
 
+  if (spotifyImage.length() > 0) {
+    size_t outputLength;
+    unsigned char *decoded = (unsigned char *)malloc(12800);
+    if (decoded != NULL) {
+      mbedtls_base64_decode(decoded, 12800, &outputLength, (const unsigned char *)spotifyImage.c_str(), spotifyImage.length());
+      tft.drawRGBBitmap(contentX(), contentY() + 28, (uint16_t *)decoded, 80, 80);
+      free(decoded);
+    }
+  }
+
+  int16_t textX = contentX() + 90;
+
   u8g2Fonts.setFont(u8g2_font_10x20_te);
-  drawUtf8String(spotifyTitle, contentX(), contentY() + 34, COLOR_TEXT_PRIMARY);
+  drawUtf8String(spotifyTitle, textX, contentY() + 44, COLOR_TEXT_PRIMARY);
+
   u8g2Fonts.setFont(u8g2_font_7x13_te);
-  drawUtf8String(spotifyArtist, contentX(), contentY() + 78, COLOR_ACCENT_BLUE);
-  drawUtf8String(spotifyAlbum, contentX(), contentY() + 108, COLOR_TEXT_SECOND);
+  drawUtf8String(spotifyArtist, textX, contentY() + 78, COLOR_ACCENT_BLUE);
+  drawUtf8String(spotifyAlbum, textX, contentY() + 98, COLOR_TEXT_SECOND);
+
   drawFooter("Spotify - " + labelForState(currentState), accentForState(currentState));
 }
-
 // Every call does a FULL clearContentArea() + redraw of the current lines.
 void renderShoppingList(uint16_t textColor) {
   clearContentArea();
@@ -741,6 +755,7 @@ void applySpotifyPayload(JsonDocument &document) {
   spotifyTitle = (const char *)(document["title"] | "");
   spotifyArtist = (const char *)(document["artist"] | "");
   spotifyAlbum = (const char *)(document["album"] | "");
+  spotifyImage = (const char *)(document["image_raw"] | "");
 
   if (currentScreen == SCREEN_SPOTIFY || currentScreen == SCREEN_HOME) {
     renderScreen(COLOR_TEXT_PRIMARY);

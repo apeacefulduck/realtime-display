@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import io
+import base64
+from PIL import Image 
+
 import json
 import os
 import secrets
@@ -101,6 +105,31 @@ async def refresh_spotify_token() -> None:
     if payload.get("refresh_token"):
         spotify_tokens["refresh_token"] = payload["refresh_token"]
 
+async def fetch_and_convert_album_art(url: str, target_size=(80, 80)) -> str:
+    if not url:
+        return ""
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            res = await client.get(url)
+            if res.status_code != 200:
+                return ""
+
+        # Resmi aç ve 80x80 boyutuna getir
+        img = Image.open(io.BytesIO(res.content)).convert("RGB")
+        img = img.resize(target_size, Image.Resampling.LANCZOS)
+
+        # RGB565 formatına dönüştür
+        raw_bytes = bytearray()
+        for y in range(img.height):
+            for x in range(img.width):
+                r, g, b = img.getpixel((x, y))
+                rgb565 = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+                raw_bytes.append((rgb565 >> 8) & 0xFF)
+                raw_bytes.append(rgb565 & 0xFF)
+
+        return base64.b64encode(raw_bytes).decode('utf-8')
+    except Exception:
+        return ""
 
 async def spotify_get(url: str) -> httpx.Response:
     access_token = spotify_tokens.get("access_token")
@@ -196,6 +225,36 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+@app.get("/spotify/current")
+async def spotify_current() -> dict[str, Any]:
+    response = await spotify_get(SPOTIFY_NOW_PLAYING_URL)
+
+    if response.status_code == 204:
+        return {"connected": True, "playing": False}
+    if response.status_code >= 400:
+        raise HTTPException(status_code=response.status_code, detail="Spotify request failed.")
+
+    payload = response.json()
+    item = payload.get("item") or {}
+    artists = ", ".join(artist.get("name", "") for artist in item.get("artists", [])).strip(", ")
+
+    # Resim URL'sini çek (en küçük resmi tercih edebiliriz, örn: 300x300 veya 64x64)
+    images = (item.get("album") or {}).get("images", [])
+    image_url = images[-1]["url"] if images else "" # En küçük boyut
+
+    # Resmi indirip RGB565 base64'e çevir
+    image_raw_b64 = await fetch_and_convert_album_art(image_url, target_size=(80, 80))
+
+    return {
+        "connected": True,
+        "playing": bool(payload.get("is_playing")),
+        "title": item.get("name", ""),
+        "artist": artists,
+        "album": (item.get("album") or {}).get("name", ""),
+        "progress_ms": payload.get("progress_ms", 0),
+        "duration_ms": item.get("duration_ms", 0),
+        "image_raw": image_raw_b64 # <-- ESP32'ye gönderilecek görsel verisi
+    }
 
 @app.get("/spotify/login")
 async def spotify_login() -> RedirectResponse:
