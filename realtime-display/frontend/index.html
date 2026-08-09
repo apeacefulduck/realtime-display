@@ -17,29 +17,52 @@
           </p>
         </div>
 
+        <nav class="tabs" aria-label="Display mode">
+          <button id="shoppingTab" class="tab active" type="button">Alisveris</button>
+          <button id="spotifyTab" class="tab" type="button">Spotify</button>
+        </nav>
+
         <div class="tft-frame" aria-label="TFT display preview">
           <div class="tft-screen">
             <div class="tft-topbar">
-              <span>SHOPPING LIST</span>
+              <span id="previewTitle">SHOPPING LIST</span>
               <span id="itemCount">0</span>
             </div>
             <ol id="shoppingPreview" class="shopping-preview">
               <li class="empty">Liste bos</li>
             </ol>
+            <div id="spotifyPreview" class="spotify-preview" hidden>
+              <p id="spotifyTrack" class="track">Spotify baglanmadi</p>
+              <p id="spotifyArtist" class="artist">Hesabini bagla ve switch'i ac</p>
+              <p id="spotifyAlbum" class="album"></p>
+            </div>
           </div>
         </div>
 
-        <div class="composer">
-          <input
-            id="itemInput"
-            type="text"
-            maxlength="32"
-            placeholder="Alisveris urunu yaz"
-            autocomplete="off"
-          />
-          <button id="sendButton" type="button">Ekle</button>
+        <div id="shoppingControls" class="controls">
+          <div class="composer">
+            <input
+              id="itemInput"
+              type="text"
+              maxlength="32"
+              placeholder="Alisveris urunu yaz"
+              autocomplete="off"
+            />
+            <button id="sendButton" type="button">Ekle</button>
+          </div>
+          <button id="clearButton" class="secondary-button" type="button">Listeyi Sifirla</button>
         </div>
-        <button id="clearButton" class="secondary-button" type="button">Listeyi Sifirla</button>
+
+        <div id="spotifyControls" class="controls" hidden>
+          <a class="spotify-login" href="https://realtime-display.onrender.com/spotify/login" target="_blank" rel="noreferrer">
+            Spotify Bagla
+          </a>
+          <label class="switch-row">
+            <span>Spotify bilgisini ekranda goster</span>
+            <input id="spotifySwitch" type="checkbox" />
+          </label>
+          <button id="refreshSpotifyButton" class="secondary-button" type="button">Sarkiyi Yenile</button>
+        </div>
       </section>
     </main>
 
