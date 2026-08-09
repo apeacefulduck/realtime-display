@@ -10,7 +10,23 @@ from urllib.parse import urlencode
 import httpx
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware  # <-- Buraya ekle
+from fastapi.responses import HTMLResponse, RedirectResponse
 
+app = FastAPI(title="ESP32 Live Display")
+
+# --- CORS Ayarı (Buraya Ekle) ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+# --------------------------------
+
+SPOTIFY_AUTH_URL = "https://accounts.spotify.com/authorize"
 
 app = FastAPI(title="ESP32 Live Display")
 
