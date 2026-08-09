@@ -1,5 +1,4 @@
-const socketUrl = `ws://${window.location.hostname || "localhost"}:8000/ws`;
-
+const socketUrl = "wss://realtime-display.onrender.com/ws";
 const itemInput = document.querySelector("#itemInput");
 const sendButton = document.querySelector("#sendButton");
 const clearButton = document.querySelector("#clearButton");
