@@ -9,15 +9,12 @@ from urllib.parse import urlencode
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware  # <-- Buraya ekle
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 app = FastAPI(title="ESP32 Live Display")
 
 # --- CORS Ayarı ---
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://realtime-display-lime.vercel.app"],
@@ -26,10 +23,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 # --------------------------------
-
-SPOTIFY_AUTH_URL = "https://accounts.spotify.com/authorize"
-
-app = FastAPI(title="ESP32 Live Display")
 
 SPOTIFY_AUTH_URL = "https://accounts.spotify.com/authorize"
 SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
