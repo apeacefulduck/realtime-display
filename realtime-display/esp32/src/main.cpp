@@ -49,8 +49,8 @@
 // ============================================================================
 const char *WIFI_SSID = "apeacefulduck5";
 const char *WIFI_PASSWORD = "Muslera26";
-const char *WEBSOCKET_HOST = "192.168.1.103";
-const uint16_t WEBSOCKET_PORT = 8000;
+const char *WEBSOCKET_HOST = "realtime-display.onrender.com";
+const uint16_t WEBSOCKET_PORT = 443;
 const char *WEBSOCKET_PATH = "/ws";
 
 const uint8_t TFT_CS_PIN = 5;
@@ -477,7 +477,7 @@ void connectWifi() {
 // WEBSOCKET SETUP — UNCHANGED LOGIC
 // ============================================================================
 void connectWebSocket() {
-  webSocket.begin(WEBSOCKET_HOST, WEBSOCKET_PORT, WEBSOCKET_PATH);
+  webSocket.beginSSL("realtime-display.onrender.com", 443, "/ws");
   webSocket.onEvent(handleSocket);
   webSocket.setReconnectInterval(WEBSOCKET_RECONNECT_MS);
 }
