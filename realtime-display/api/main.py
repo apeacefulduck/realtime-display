@@ -124,8 +124,8 @@ async def fetch_and_convert_album_art(url: str, target_size=(80, 80)) -> str:
             for x in range(img.width):
                 r, g, b = img.getpixel((x, y))
                 rgb565 = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
-                raw_bytes.append((rgb565 >> 8) & 0xFF)
-                raw_bytes.append(rgb565 & 0xFF)
+                raw_bytes.append((rgb565 >> 8) & 0xFF)  # yüksek byte
+                raw_bytes.append(rgb565 & 0xFF)         # düşük byte
 
         return base64.b64encode(raw_bytes).decode('utf-8')
     except Exception:
