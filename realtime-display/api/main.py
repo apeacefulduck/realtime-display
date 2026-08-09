@@ -303,30 +303,6 @@ async def spotify_callback(request: Request) -> HTMLResponse:
     )
 
 
-@app.get("/spotify/current")
-async def spotify_current() -> dict[str, Any]:
-    response = await spotify_get(SPOTIFY_NOW_PLAYING_URL)
-
-    if response.status_code == 204:
-        return {"connected": True, "playing": False}
-    if response.status_code >= 400:
-        raise HTTPException(status_code=response.status_code, detail="Spotify request failed.")
-
-    payload = response.json()
-    item = payload.get("item") or {}
-    artists = ", ".join(artist.get("name", "") for artist in item.get("artists", [])).strip(", ")
-
-    return {
-        "connected": True,
-        "playing": bool(payload.get("is_playing")),
-        "title": item.get("name", ""),
-        "artist": artists,
-        "album": (item.get("album") or {}).get("name", ""),
-        "progress_ms": payload.get("progress_ms", 0),
-        "duration_ms": item.get("duration_ms", 0),
-    }
-
-
 @app.get("/weather")
 async def weather(lat: float = 41.0082, lon: float = 28.9784) -> dict[str, Any]:
     params = {
