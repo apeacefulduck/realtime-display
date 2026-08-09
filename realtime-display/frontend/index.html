@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ESP32 Shopping List Display</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="panel" aria-label="ESP32 shopping list display control">
+        <div class="panel-header">
+          <h1>ESP32 Live Display</h1>
+          <p id="connectionStatus" class="status disconnected">
+            <span aria-hidden="true">&bull;</span>
+            Disconnected
+          </p>
+        </div>
+
+        <div class="tft-frame" aria-label="TFT display preview">
+          <div class="tft-screen">
+            <div class="tft-topbar">
+              <span>SHOPPING LIST</span>
+              <span id="itemCount">0</span>
+            </div>
+            <ol id="shoppingPreview" class="shopping-preview">
+              <li class="empty">Liste bos</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="composer">
+          <input
+            id="itemInput"
+            type="text"
+            maxlength="32"
+            placeholder="Alisveris urunu yaz"
+            autocomplete="off"
+          />
+          <button id="sendButton" type="button">Ekle</button>
+        </div>
+        <button id="clearButton" class="secondary-button" type="button">Listeyi Sifirla</button>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
