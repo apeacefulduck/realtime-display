@@ -665,7 +665,7 @@ void renderSpotifyScreen() {
     unsigned char *decoded = (unsigned char *)malloc(4608);
     if (decoded != NULL) {
       mbedtls_base64_decode(decoded, 12800, &outputLength, (const unsigned char *)spotifyImage.c_str(), spotifyImage.length());
-      tft.drawRGBBitmap(contentX(), contentY() + 28, (uint16_t *)decoded, 80, 80);
+      tft.drawRGBBitmap(contentX(), contentY() + 28, (uint16_t *)decoded, 48, 48);
       free(decoded);
     }
   }
