@@ -28,9 +28,33 @@ SPOTIFY_AUTH_URL = "https://accounts.spotify.com/authorize"
 SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 SPOTIFY_NOW_PLAYING_URL = "https://api.spotify.com/v1/me/player/currently-playing"
 SPOTIFY_SCOPES = "user-read-currently-playing user-read-playback-state"
+OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 
 spotify_state: str | None = None
 spotify_tokens: dict[str, Any] = {}
+
+
+def weather_label(code: int) -> tuple[str, str]:
+    if code == 0:
+        return "clear", "Açık"
+    if code in {1, 2}:
+        return "partly_cloudy", "Parçalı bulutlu"
+    if code == 3:
+        return "cloudy", "Bulutlu"
+    if code in {45, 48}:
+        return "fog", "Sisli"
+    if code in {51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82}:
+        return "rain", "Yağmurlu"
+    if code in {71, 73, 75, 77, 85, 86}:
+        return "snow", "Karlı"
+    if code in {95, 96, 99}:
+        return "storm", "Fırtına"
+    return "unknown", "Bilinmiyor"
+
+
+def short_day(date_text: str) -> str:
+    # YYYY-MM-DD -> MM/DD keeps the ESP payload compact and language-neutral.
+    return f"{date_text[5:7]}/{date_text[8:10]}"
 
 
 def spotify_config() -> tuple[str, str, str]:
@@ -240,6 +264,62 @@ async def spotify_current() -> dict[str, Any]:
         "album": (item.get("album") or {}).get("name", ""),
         "progress_ms": payload.get("progress_ms", 0),
         "duration_ms": item.get("duration_ms", 0),
+    }
+
+
+@app.get("/weather")
+async def weather(lat: float = 41.0082, lon: float = 28.9784) -> dict[str, Any]:
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "timezone": "auto",
+        "current": "temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m",
+        "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
+        "forecast_days": 7,
+    }
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.get(OPEN_METEO_FORECAST_URL, params=params)
+
+    if response.status_code >= 400:
+        raise HTTPException(status_code=response.status_code, detail="Weather request failed.")
+
+    payload = response.json()
+    current = payload.get("current") or {}
+    daily = payload.get("daily") or {}
+    condition, label = weather_label(int(current.get("weather_code", -1)))
+
+    forecast: list[dict[str, Any]] = []
+    dates = daily.get("time", [])
+    codes = daily.get("weather_code", [])
+    max_temps = daily.get("temperature_2m_max", [])
+    min_temps = daily.get("temperature_2m_min", [])
+    rain_probs = daily.get("precipitation_probability_max", [])
+
+    for index, date_text in enumerate(dates[:7]):
+        day_code = int(codes[index]) if index < len(codes) else -1
+        day_condition, day_label = weather_label(day_code)
+        forecast.append(
+            {
+                "day": short_day(str(date_text)),
+                "condition": day_condition,
+                "label": day_label,
+                "code": day_code,
+                "max": round(float(max_temps[index])) if index < len(max_temps) else 0,
+                "min": round(float(min_temps[index])) if index < len(min_temps) else 0,
+                "rain": int(rain_probs[index]) if index < len(rain_probs) and rain_probs[index] is not None else 0,
+            }
+        )
+
+    return {
+        "type": "weather",
+        "location": "Istanbul",
+        "temperature": round(float(current.get("temperature_2m", 0))),
+        "humidity": int(current.get("relative_humidity_2m", 0)),
+        "wind": round(float(current.get("wind_speed_10m", 0))),
+        "condition": condition,
+        "label": label,
+        "forecast": forecast,
     }
 
 

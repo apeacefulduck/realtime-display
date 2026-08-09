@@ -82,7 +82,7 @@ h1 {
 
 .tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 0.5rem;
   margin-bottom: 1rem;
 }
@@ -183,6 +183,214 @@ h1 {
   font-size: 0.9rem;
 }
 
+.weather-preview {
+  position: relative;
+  display: grid;
+  gap: 1rem;
+  min-height: 12.5rem;
+}
+
+.weather-current {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.weather-icon {
+  display: grid;
+  width: 4.25rem;
+  height: 4.25rem;
+  place-items: center;
+  border: 1px solid rgba(45, 212, 191, 0.35);
+  border-radius: 8px;
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 800;
+  overflow: hidden;
+  animation: weather-pulse 2.4s ease-in-out infinite;
+}
+
+.condition-clear .weather-icon {
+  color: #facc15;
+  border-color: rgba(250, 204, 21, 0.45);
+}
+
+.condition-cloudy .weather-icon,
+.condition-partly_cloudy .weather-icon,
+.condition-fog .weather-icon {
+  color: #cbd5e1;
+}
+
+.condition-rain .weather-icon {
+  color: #38bdf8;
+}
+
+.condition-snow .weather-icon {
+  color: #e0f2fe;
+}
+
+.condition-storm .weather-icon {
+  color: #fbbf24;
+  animation-name: weather-flash;
+}
+
+.weather-temp {
+  margin: 0;
+  color: #ffffff;
+  font-size: clamp(1.6rem, 6vw, 2.25rem);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.weather-label {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.weather-forecast {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.weather-effect {
+  position: absolute;
+  inset: 5.2rem 0.25rem 3.35rem;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.weather-effect span {
+  position: absolute;
+  left: var(--x);
+  top: -0.8rem;
+  animation-delay: var(--delay);
+}
+
+.condition-rain .weather-effect span,
+.condition-storm .weather-effect span {
+  width: 0.12rem;
+  height: 0.85rem;
+  border-radius: 999px;
+  background: #38bdf8;
+  transform: rotate(18deg);
+  animation: rain-fall 0.78s linear infinite;
+}
+
+.condition-snow .weather-effect span {
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 999px;
+  background: #e0f2fe;
+  animation: snow-fall 2.7s linear infinite;
+}
+
+.condition-fog .weather-effect span,
+.condition-cloudy .weather-effect span,
+.condition-partly_cloudy .weather-effect span {
+  width: 2.8rem;
+  height: 0.12rem;
+  border-radius: 999px;
+  background: rgba(203, 213, 225, 0.45);
+  animation: cloud-drift 3.2s ease-in-out infinite;
+}
+
+.condition-clear .weather-effect span {
+  width: 0.18rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  background: rgba(250, 204, 21, 0.55);
+  transform-origin: 50% 3.4rem;
+  animation: sun-rays 2.6s linear infinite;
+}
+
+.forecast-day {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+  padding: 0.45rem 0.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  text-align: center;
+}
+
+.forecast-day.condition-rain,
+.forecast-day.condition-storm {
+  border-color: rgba(56, 189, 248, 0.35);
+}
+
+.forecast-day.condition-clear {
+  border-color: rgba(250, 204, 21, 0.35);
+}
+
+.forecast-day.condition-snow {
+  border-color: rgba(224, 242, 254, 0.35);
+}
+
+.forecast-day span,
+.forecast-day small {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.forecast-day strong {
+  color: var(--text);
+  font-size: 0.72rem;
+}
+
+@keyframes weather-pulse {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-1px) scale(1.04);
+  }
+}
+
+@keyframes weather-flash {
+  0%,
+  76%,
+  100% {
+    background: transparent;
+  }
+  82% {
+    background: rgba(251, 191, 36, 0.18);
+  }
+}
+
+@keyframes rain-fall {
+  to {
+    top: 105%;
+  }
+}
+
+@keyframes snow-fall {
+  to {
+    top: 105%;
+    transform: translateX(0.7rem) rotate(180deg);
+  }
+}
+
+@keyframes cloud-drift {
+  0%,
+  100% {
+    transform: translateX(-0.4rem);
+    opacity: 0.3;
+  }
+  50% {
+    transform: translateX(0.5rem);
+    opacity: 0.68;
+  }
+}
+
+@keyframes sun-rays {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .controls {
   display: grid;
   gap: 0.75rem;
@@ -193,6 +401,12 @@ h1 {
   grid-template-columns: 1fr 7rem;
   gap: 0.75rem;
   margin-bottom: 0.75rem;
+}
+
+.coordinate-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
 }
 
 input {
@@ -287,5 +501,9 @@ button:disabled {
 
   .composer {
     grid-template-columns: 1fr;
+  }
+
+  .weather-forecast {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }

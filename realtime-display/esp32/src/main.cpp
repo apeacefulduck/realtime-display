@@ -34,6 +34,7 @@
 // ============================================================================
 
 #include <ArduinoJson.h>
+#include <math.h>
 #include <WiFi.h>
 #include <WebSocketsClient.h>
 #include <Adafruit_GFX.h>
@@ -69,6 +70,7 @@ const uint16_t JOYSTICK_DEADZONE = 650;
 const uint16_t JOYSTICK_EDGE_MARGIN = 260;
 const uint8_t JOYSTICK_CALIBRATION_SAMPLES = 40;
 const uint8_t MENU_HEIGHT_DIVISOR = 3;
+const uint16_t WEATHER_ANIMATION_MS = 450;
 
 // ============================================================================
 // DESIGN SYSTEM — COLORS (RGB565)
@@ -107,6 +109,22 @@ bool spotifyPlaying = false;
 String spotifyTitle = "";
 String spotifyArtist = "";
 String spotifyAlbum = "";
+bool weatherEnabled = false;
+String weatherCondition = "";
+String weatherLabel = "";
+int weatherTemperature = 0;
+int weatherHumidity = 0;
+int weatherWind = 0;
+const uint8_t WEATHER_DAYS = 7;
+String weatherDay[WEATHER_DAYS];
+String weatherDayCondition[WEATHER_DAYS];
+int weatherDayMax[WEATHER_DAYS];
+int weatherDayMin[WEATHER_DAYS];
+int weatherDayRain[WEATHER_DAYS];
+uint8_t weatherDayCount = 0;
+uint8_t weatherPage = 0;
+uint8_t weatherAnimationFrame = 0;
+uint32_t lastWeatherAnimationAt = 0;
 
 // The web app always sends this exact title as the first line; we recognize
 // and skip it since the card header already shows the "HomeFlow" brand.
@@ -485,6 +503,83 @@ void drawSimpleMetric(const String &label, const String &value, int16_t y, uint1
   drawUtf8String(value, contentX(), y + 32, valueColor);
 }
 
+void drawWeatherSun(int16_t cx, int16_t cy, uint8_t frame) {
+  uint8_t radius = 13 + (frame % 2);
+  tft.fillCircle(cx, cy, radius, COLOR_WARNING);
+  for (uint8_t i = 0; i < 8; i++) {
+    float angle = (i * 0.785f) + (frame % 4) * 0.12f;
+    int16_t x1 = cx + cos(angle) * 20;
+    int16_t y1 = cy + sin(angle) * 20;
+    int16_t x2 = cx + cos(angle) * 27;
+    int16_t y2 = cy + sin(angle) * 27;
+    tft.drawLine(x1, y1, x2, y2, COLOR_WARNING);
+  }
+}
+
+void drawWeatherCloud(int16_t cx, int16_t cy, uint16_t color) {
+  tft.fillCircle(cx - 16, cy + 4, 12, color);
+  tft.fillCircle(cx, cy - 4, 16, color);
+  tft.fillCircle(cx + 17, cy + 3, 12, color);
+  tft.fillRoundRect(cx - 28, cy + 4, 56, 18, 8, color);
+}
+
+void drawWeatherRain(int16_t cx, int16_t cy, uint8_t frame) {
+  drawWeatherCloud(cx, cy - 8, COLOR_TEXT_SECOND);
+  for (uint8_t i = 0; i < 5; i++) {
+    int16_t x = cx - 24 + i * 12;
+    int16_t offset = ((frame + i) % 3) * 5;
+    tft.drawLine(x, cy + 20 + offset, x - 4, cy + 30 + offset, COLOR_ACCENT_BLUE);
+  }
+}
+
+void drawWeatherSnow(int16_t cx, int16_t cy, uint8_t frame) {
+  drawWeatherCloud(cx, cy - 8, COLOR_TEXT_SECOND);
+  for (uint8_t i = 0; i < 5; i++) {
+    int16_t x = cx - 24 + i * 12;
+    int16_t y = cy + 22 + ((frame + i) % 3) * 5;
+    tft.drawCircle(x, y, 2, COLOR_TEXT_PRIMARY);
+  }
+}
+
+void drawWeatherFog(int16_t cx, int16_t cy, uint8_t frame) {
+  drawWeatherCloud(cx, cy - 12, COLOR_TEXT_SECOND);
+  for (uint8_t i = 0; i < 4; i++) {
+    int16_t y = cy + 20 + i * 7;
+    int16_t shift = (frame % 3) * 3;
+    tft.drawFastHLine(cx - 32 + shift, y, 48, COLOR_BORDER);
+    tft.drawFastHLine(cx - 10 + shift, y + 3, 36, COLOR_TEXT_SECOND);
+  }
+}
+
+void drawWeatherStorm(int16_t cx, int16_t cy, uint8_t frame) {
+  drawWeatherRain(cx, cy - 4, frame);
+  tft.fillTriangle(cx + 2, cy + 10, cx - 8, cy + 34, cx + 4, cy + 29, COLOR_WARNING);
+  tft.fillTriangle(cx + 4, cy + 28, cx + 14, cy + 28, cx - 2, cy + 48, COLOR_WARNING);
+}
+
+void drawWeatherAnimation(const String &condition, int16_t cx, int16_t cy) {
+  tft.fillRect(cx - 48, cy - 44, 96, 96, COLOR_CARD_BG);
+
+  if (condition == "clear") {
+    drawWeatherSun(cx, cy, weatherAnimationFrame);
+  } else if (condition == "partly_cloudy") {
+    drawWeatherSun(cx - 18, cy - 10, weatherAnimationFrame);
+    drawWeatherCloud(cx + 8, cy + 4, COLOR_TEXT_SECOND);
+  } else if (condition == "cloudy") {
+    drawWeatherCloud(cx, cy, COLOR_TEXT_SECOND);
+  } else if (condition == "rain") {
+    drawWeatherRain(cx, cy, weatherAnimationFrame);
+  } else if (condition == "snow") {
+    drawWeatherSnow(cx, cy, weatherAnimationFrame);
+  } else if (condition == "storm") {
+    drawWeatherStorm(cx, cy, weatherAnimationFrame);
+  } else if (condition == "fog") {
+    drawWeatherFog(cx, cy, weatherAnimationFrame);
+  } else {
+    drawWeatherCloud(cx, cy, COLOR_BORDER);
+  }
+}
+
 void renderHomeScreen() {
   clearContentArea();
   drawSimpleMetric("Genel özet", "HomeFlow hazır", contentY() + 18, COLOR_TEXT_PRIMARY);
@@ -499,8 +594,31 @@ void renderIndoorScreen() {
 
 void renderWeatherScreen() {
   clearContentArea();
-  drawSimpleMetric("Hava durumu", "Dışarı", contentY() + 24, COLOR_TEXT_PRIMARY);
-  drawSimpleMetric("Sıcaklık", "-- C", contentY() + 96, COLOR_WARNING);
+
+  if (!weatherEnabled) {
+    drawStatus("Hava kapalı", COLOR_TEXT_SECOND, contentY() + contentH() / 2);
+    clearFooterArea();
+    return;
+  }
+
+  drawWeatherAnimation(weatherCondition, contentX() + 48, contentY() + 52);
+  drawSimpleMetric(weatherLabel, String(weatherTemperature) + " C", contentY() + 14, COLOR_WARNING);
+
+  u8g2Fonts.setFont(u8g2_font_7x13_te);
+  drawUtf8String("Nem " + String(weatherHumidity) + "%  Rüzgar " + String(weatherWind) + " km/s",
+                 contentX() + 110, contentY() + 88, COLOR_TEXT_SECOND);
+
+  if (weatherDayCount > 0) {
+    if (weatherPage >= weatherDayCount) weatherPage = 0;
+    int16_t y = contentY() + 124;
+    drawUtf8String(weatherDay[weatherPage] + "  " + weatherDayMax[weatherPage] + "/" + weatherDayMin[weatherPage] + " C",
+                   contentX(), y, COLOR_TEXT_PRIMARY);
+    drawUtf8String("Yağış %" + String(weatherDayRain[weatherPage]) + "  " + weatherDayCondition[weatherPage],
+                   contentX(), y + 22, COLOR_ACCENT_BLUE);
+  }
+
+  drawFooter("Hava - " + String(weatherPage + 1) + "/" + String(max((uint8_t)1, weatherDayCount)),
+             accentForState(currentState));
 }
 
 void renderSleepScreen() {
@@ -613,6 +731,39 @@ void applySpotifyPayload(JsonDocument &document) {
   }
 }
 
+void applyWeatherPayload(JsonDocument &document) {
+  weatherEnabled = document["enabled"] | false;
+
+  if (!weatherEnabled) {
+    weatherDayCount = 0;
+    weatherPage = 0;
+  } else {
+    weatherCondition = (const char *)(document["condition"] | "unknown");
+    weatherLabel = (const char *)(document["label"] | "Hava");
+    weatherTemperature = document["temperature"] | 0;
+    weatherHumidity = document["humidity"] | 0;
+    weatherWind = document["wind"] | 0;
+
+    JsonArray forecast = document["forecast"].as<JsonArray>();
+    weatherDayCount = min((uint8_t)WEATHER_DAYS, (uint8_t)forecast.size());
+    uint8_t index = 0;
+    for (JsonObject day : forecast) {
+      if (index >= WEATHER_DAYS) break;
+      weatherDay[index] = (const char *)(day["day"] | "");
+      weatherDayCondition[index] = (const char *)(day["label"] | day["condition"] | "");
+      weatherDayMax[index] = day["max"] | 0;
+      weatherDayMin[index] = day["min"] | 0;
+      weatherDayRain[index] = day["rain"] | 0;
+      index++;
+    }
+    if (weatherPage >= weatherDayCount) weatherPage = 0;
+  }
+
+  if (currentScreen == SCREEN_WEATHER || currentScreen == SCREEN_HOME) {
+    renderScreen(COLOR_TEXT_PRIMARY);
+  }
+}
+
 // ============================================================================
 // CONNECTION STATE — updates header dot + footer WITHOUT touching the list,
 // so a WebSocket reconnect never wipes what's on screen.
@@ -662,6 +813,27 @@ void moveShoppingPage(int8_t delta) {
   if (next == shoppingPage) return;
   shoppingPage = next;
   animateScreenChange(delta);
+}
+
+void moveWeatherPage(int8_t delta) {
+  if (currentScreen != SCREEN_WEATHER || weatherDayCount == 0) return;
+  int8_t next = (int8_t)weatherPage + delta;
+  if (next < 0) next = weatherDayCount - 1;
+  if (next >= weatherDayCount) next = 0;
+  if (next == weatherPage) return;
+  weatherPage = next;
+  animateScreenChange(delta);
+}
+
+void updateWeatherAnimation() {
+  if (currentScreen != SCREEN_WEATHER || !weatherEnabled) return;
+
+  uint32_t now = millis();
+  if (now - lastWeatherAnimationAt < WEATHER_ANIMATION_MS) return;
+
+  weatherAnimationFrame = (weatherAnimationFrame + 1) % 12;
+  lastWeatherAnimationAt = now;
+  drawWeatherAnimation(weatherCondition, contentX() + 48, contentY() + 52);
 }
 
 uint16_t readAveragedAnalog(uint8_t pin) {
@@ -727,6 +899,7 @@ void handleJoystick() {
   } else if (xDir != 0) {
     lastJoystickMoveAt = now;
     moveShoppingPage(xDir);
+    moveWeatherPage(xDir);
   }
 }
 
@@ -750,6 +923,8 @@ void handleIncomingPayload(const String &payload) {
 
   if (type == "spotify") {
     applySpotifyPayload(document);
+  } else if (type == "weather") {
+    applyWeatherPayload(document);
   } else {
     applyDisplayText(text, mapDisplayColor(colorName));
   }
@@ -835,4 +1010,5 @@ void setup() {
 void loop() {
   webSocket.loop();
   handleJoystick();
+  updateWeatherAnimation();
 }

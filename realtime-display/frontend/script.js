@@ -16,13 +16,26 @@ const shoppingControls = document.querySelector("#shoppingControls");
 const spotifyControls = document.querySelector("#spotifyControls");
 const spotifySwitch = document.querySelector("#spotifySwitch");
 const refreshSpotifyButton = document.querySelector("#refreshSpotifyButton");
+const weatherTab = document.querySelector("#weatherTab");
+const weatherControls = document.querySelector("#weatherControls");
+const weatherPreview = document.querySelector("#weatherPreview");
+const weatherIcon = document.querySelector("#weatherIcon");
+const weatherTemp = document.querySelector("#weatherTemp");
+const weatherLabel = document.querySelector("#weatherLabel");
+const weatherForecast = document.querySelector("#weatherForecast");
+const weatherSwitch = document.querySelector("#weatherSwitch");
+const refreshWeatherButton = document.querySelector("#refreshWeatherButton");
+const weatherLat = document.querySelector("#weatherLat");
+const weatherLon = document.querySelector("#weatherLon");
 
 let socket;
 let reconnectTimer;
 let spotifyTimer;
+let weatherTimer;
 let activePanel = "shopping";
 const shoppingItems = [];
 const maxItems = 8;
+const apiBaseUrl = "https://realtime-display.onrender.com";
 
 function setConnectionState(isConnected) {
   connectionStatus.classList.toggle("connected", isConnected);
@@ -34,19 +47,30 @@ function setConnectionState(isConnected) {
   clearButton.disabled = !isConnected;
   spotifySwitch.disabled = !isConnected;
   refreshSpotifyButton.disabled = !isConnected;
+  weatherSwitch.disabled = !isConnected;
+  refreshWeatherButton.disabled = !isConnected;
 }
 
 function setActivePanel(panel) {
   activePanel = panel;
   const isSpotify = panel === "spotify";
-  shoppingTab.classList.toggle("active", !isSpotify);
+  const isWeather = panel === "weather";
+  const isShopping = panel === "shopping";
+  shoppingTab.classList.toggle("active", isShopping);
   spotifyTab.classList.toggle("active", isSpotify);
-  shoppingControls.hidden = isSpotify;
+  weatherTab.classList.toggle("active", isWeather);
+  shoppingControls.hidden = !isShopping;
   spotifyControls.hidden = !isSpotify;
-  shoppingPreview.hidden = isSpotify;
+  weatherControls.hidden = !isWeather;
+  shoppingPreview.hidden = !isShopping;
   spotifyPreview.hidden = !isSpotify;
-  previewTitle.textContent = isSpotify ? "SPOTIFY" : "SHOPPING LIST";
-  itemCount.textContent = isSpotify ? (spotifySwitch.checked ? "ON" : "OFF") : shoppingItems.length.toString();
+  weatherPreview.hidden = !isWeather;
+  previewTitle.textContent = isWeather ? "WEATHER" : isSpotify ? "SPOTIFY" : "SHOPPING LIST";
+  itemCount.textContent = isWeather
+    ? (weatherSwitch.checked ? "ON" : "OFF")
+    : isSpotify
+      ? (spotifySwitch.checked ? "ON" : "OFF")
+      : shoppingItems.length.toString();
 }
 
 function renderShoppingList() {
@@ -137,11 +161,134 @@ function renderSpotify(data) {
 }
 
 async function fetchSpotifyCurrent() {
-  const response = await fetch("https://realtime-display.onrender.com/spotify/current");
+  const response = await fetch(`${apiBaseUrl}/spotify/current`);
   if (!response.ok) {
     throw new Error("Spotify current request failed");
   }
   return response.json();
+}
+
+function iconForCondition(condition) {
+  return {
+    clear: "☀",
+    partly_cloudy: "◐",
+    cloudy: "☁",
+    fog: "≋",
+    rain: "╲",
+    snow: "*",
+    storm: "ϟ",
+  }[condition] || "?";
+}
+
+function setWeatherConditionClass(condition) {
+  const conditions = ["clear", "partly_cloudy", "cloudy", "fog", "rain", "snow", "storm", "unknown"];
+  weatherPreview.classList.remove(...conditions.map((name) => `condition-${name}`));
+  weatherPreview.classList.add(`condition-${condition || "unknown"}`);
+}
+
+function createWeatherEffect(condition) {
+  const effect = document.createElement("div");
+  effect.className = "weather-effect";
+  effect.setAttribute("aria-hidden", "true");
+
+  const particleCount = {
+    clear: 8,
+    partly_cloudy: 3,
+    cloudy: 4,
+    fog: 5,
+    rain: 14,
+    snow: 16,
+    storm: 12,
+  }[condition] || 3;
+
+  for (let index = 0; index < particleCount; index += 1) {
+    const particle = document.createElement("span");
+    particle.style.setProperty("--i", index);
+    particle.style.setProperty("--x", `${8 + ((index * 19) % 84)}%`);
+    particle.style.setProperty("--delay", `${(index % 7) * -0.22}s`);
+    effect.appendChild(particle);
+  }
+
+  return effect;
+}
+
+function renderWeather(data) {
+  const enabled = weatherSwitch.checked;
+  itemCount.textContent = enabled ? "ON" : "OFF";
+
+  if (!enabled) {
+    setWeatherConditionClass("unknown");
+    weatherPreview.querySelectorAll(".weather-effect").forEach((effect) => effect.remove());
+    weatherIcon.textContent = "OFF";
+    weatherTemp.textContent = "-- C";
+    weatherLabel.textContent = "Switch'i acinca ESP32'ye gonderilir";
+    weatherForecast.innerHTML = "";
+    return;
+  }
+
+  if (!data) {
+    setWeatherConditionClass("unknown");
+    weatherPreview.querySelectorAll(".weather-effect").forEach((effect) => effect.remove());
+    weatherIcon.textContent = "SKY";
+    weatherTemp.textContent = "-- C";
+    weatherLabel.textContent = "Hava bilgisi alinamadi";
+    weatherForecast.innerHTML = "";
+    return;
+  }
+
+  setWeatherConditionClass(data.condition);
+  weatherIcon.textContent = iconForCondition(data.condition);
+  weatherTemp.textContent = `${data.temperature} C`;
+  weatherLabel.textContent = `${data.label} - Nem ${data.humidity}% - Ruzgar ${data.wind} km/s`;
+  weatherForecast.innerHTML = "";
+  weatherPreview.querySelectorAll(".weather-effect").forEach((effect) => effect.remove());
+  weatherForecast.before(createWeatherEffect(data.condition));
+
+  for (const day of data.forecast || []) {
+    const item = document.createElement("div");
+    item.className = "forecast-day";
+    item.classList.add(`condition-${day.condition || "unknown"}`);
+    item.innerHTML = `<span>${day.day}</span><strong>${day.max}/${day.min} C</strong><small>${iconForCondition(day.condition)} ${day.rain}%</small>`;
+    weatherForecast.appendChild(item);
+  }
+}
+
+async function fetchWeather() {
+  const lat = encodeURIComponent(weatherLat.value || "41.0082");
+  const lon = encodeURIComponent(weatherLon.value || "28.9784");
+  const response = await fetch(`${apiBaseUrl}/weather?lat=${lat}&lon=${lon}`);
+  if (!response.ok) {
+    throw new Error("Weather request failed");
+  }
+  return response.json();
+}
+
+async function sendWeatherCurrent() {
+  if (!weatherSwitch.checked) {
+    renderWeather(null);
+    sendSocketPayload({ type: "weather", enabled: false });
+    return;
+  }
+
+  try {
+    const data = await fetchWeather();
+    renderWeather(data);
+    sendSocketPayload({ ...data, enabled: true });
+  } catch (error) {
+    renderWeather(null);
+  }
+}
+
+function setWeatherPolling(enabled) {
+  window.clearInterval(weatherTimer);
+  weatherTimer = undefined;
+
+  if (enabled) {
+    sendWeatherCurrent();
+    weatherTimer = window.setInterval(sendWeatherCurrent, 15 * 60 * 1000);
+  } else {
+    sendWeatherCurrent();
+  }
 }
 
 async function sendSpotifyCurrent() {
@@ -210,8 +357,11 @@ sendButton.addEventListener("click", addItemAndSend);
 clearButton.addEventListener("click", clearShoppingList);
 shoppingTab.addEventListener("click", () => setActivePanel("shopping"));
 spotifyTab.addEventListener("click", () => setActivePanel("spotify"));
+weatherTab.addEventListener("click", () => setActivePanel("weather"));
 spotifySwitch.addEventListener("change", () => setSpotifyPolling(spotifySwitch.checked));
 refreshSpotifyButton.addEventListener("click", sendSpotifyCurrent);
+weatherSwitch.addEventListener("change", () => setWeatherPolling(weatherSwitch.checked));
+refreshWeatherButton.addEventListener("click", sendWeatherCurrent);
 itemInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();

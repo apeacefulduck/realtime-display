@@ -20,6 +20,7 @@
         <nav class="tabs" aria-label="Display mode">
           <button id="shoppingTab" class="tab active" type="button">Alisveris</button>
           <button id="spotifyTab" class="tab" type="button">Spotify</button>
+          <button id="weatherTab" class="tab" type="button">Hava</button>
         </nav>
 
         <div class="tft-frame" aria-label="TFT display preview">
@@ -35,6 +36,16 @@
               <p id="spotifyTrack" class="track">Spotify baglanmadi</p>
               <p id="spotifyArtist" class="artist">Hesabini bagla ve switch'i ac</p>
               <p id="spotifyAlbum" class="album"></p>
+            </div>
+            <div id="weatherPreview" class="weather-preview" hidden>
+              <div class="weather-current">
+                <span id="weatherIcon" class="weather-icon">SUN</span>
+                <div>
+                  <p id="weatherTemp" class="weather-temp">-- C</p>
+                  <p id="weatherLabel" class="weather-label">Hava bilgisi bekleniyor</p>
+                </div>
+              </div>
+              <div id="weatherForecast" class="weather-forecast"></div>
             </div>
           </div>
         </div>
@@ -62,6 +73,18 @@
             <input id="spotifySwitch" type="checkbox" />
           </label>
           <button id="refreshSpotifyButton" class="secondary-button" type="button">Sarkiyi Yenile</button>
+        </div>
+
+        <div id="weatherControls" class="controls" hidden>
+          <div class="coordinate-grid">
+            <input id="weatherLat" type="number" step="0.0001" value="41.0082" aria-label="Latitude" />
+            <input id="weatherLon" type="number" step="0.0001" value="28.9784" aria-label="Longitude" />
+          </div>
+          <label class="switch-row">
+            <span>Hava bilgisini ekranda goster</span>
+            <input id="weatherSwitch" type="checkbox" />
+          </label>
+          <button id="refreshWeatherButton" class="secondary-button" type="button">Havayi Yenile</button>
         </div>
       </section>
     </main>
