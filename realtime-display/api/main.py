@@ -19,8 +19,7 @@ app = FastAPI(title="ESP32 Live Display")
 # --- CORS Ayarı ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://realtime-display-lime.vercel.app"],
-    allow_credentials=True,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
