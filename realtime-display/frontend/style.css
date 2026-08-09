@@ -198,11 +198,6 @@ h1 {
   gap: 1rem;
 }
 
-/*
-  Weather icon badge. The animated particle layer (.weather-effect) sits
-  centered *inside* this box via inset:0, so it can never drift outside
-  the rounded frame or overlap the temperature/label text next to it.
-*/
 .weather-icon {
   position: relative;
   display: grid;
@@ -262,20 +257,12 @@ h1 {
   gap: 0.45rem;
 }
 
-/*
-  Particle layer. inset:0 keeps it perfectly aligned with .weather-icon at
-  any size, and the container itself (not each span) is what spins for the
-  "clear" condition — see the .condition-clear rule below. Spinning a single
-  wrapper with a plain `transform` keyframe is what was missing before: the
-  previous version animated the CSS `rotate` property on each ray while that
-  same ray also had a static `transform: rotate(..) translateY(..)`, and
-  mixing an animated individual-transform property with a static shorthand
-  transform on one element makes browsers resolve the two out of order,
-  which is what made the rays jitter/warp instead of spinning cleanly.
-*/
 .weather-effect {
   position: absolute;
-  inset: 0;
+  left: 0.55rem;
+  top: 0.55rem;
+  width: 3.15rem;
+  height: 3.15rem;
   pointer-events: none;
   overflow: hidden;
   z-index: 2;
@@ -317,19 +304,15 @@ h1 {
   animation: cloud-drift 3.2s ease-in-out infinite;
 }
 
-/* Sun: a static radial burst of rays, spun as one unit by the parent. */
-.condition-clear .weather-effect {
-  animation: spin-slow 7s linear infinite;
-}
-
 .condition-clear .weather-effect span {
+  width: 0.18rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  background: rgba(250, 204, 21, 0.55);
   left: 50%;
   top: 50%;
-  width: 0.16rem;
-  height: 0.62rem;
-  border-radius: 999px;
-  background: rgba(250, 204, 21, 0.75);
-  transform-origin: 50% 1.25rem;
+  transform-origin: 50% 1.45rem;
+  animation: sun-rays 2.6s linear infinite;
 }
 
 .condition-clear .weather-effect span:nth-child(1) { transform: rotate(0deg) translateY(-1.25rem); }
@@ -357,7 +340,6 @@ h1 {
   text-align: left;
   padding: 0.7rem;
   background: rgba(45, 212, 191, 0.08);
-  box-shadow: 0 0.35rem 1rem rgba(45, 212, 191, 0.14);
 }
 
 .forecast-day.condition-rain,
@@ -440,12 +422,9 @@ h1 {
   }
 }
 
-@keyframes spin-slow {
-  from {
-    transform: rotate(0deg);
-  }
+@keyframes sun-rays {
   to {
-    transform: rotate(360deg);
+    rotate: 360deg;
   }
 }
 
@@ -531,6 +510,25 @@ button:disabled {
   background: var(--accent);
   font-weight: 800;
   text-decoration: none;
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 3rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.switch-row input {
+  width: 2.75rem;
+  height: 1.4rem;
+  accent-color: var(--accent);
 }
 
 @media (max-width: 32rem) {

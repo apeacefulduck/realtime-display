@@ -278,7 +278,6 @@ async function sendSpotifyCurrent() {
       title: data.title || "",
       artist: data.artist || "",
       album: data.album || "",
-      image_raw: data.image_raw || "",
     });
   } catch (error) {
     spotifyTrack.textContent = "Spotify baglantisi gerekli";
