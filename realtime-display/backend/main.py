@@ -16,10 +16,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 app = FastAPI(title="ESP32 Live Display")
 
-# --- CORS Ayarı (Buraya Ekle) ---
+# --- CORS Ayarı ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://realtime-display-lime.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
