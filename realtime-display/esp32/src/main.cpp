@@ -936,20 +936,34 @@ void handleIncomingPayload(const String &payload) {
 void handleSocket(WStype_t type, uint8_t *payload, size_t length) {
   switch (type) {
     case WStype_CONNECTED:
+      Serial.println("[WS] CONNECTED!");
       updateConnectionState(STATE_CONNECTED);
       break;
+
     case WStype_DISCONNECTED:
+      Serial.println("[WS] DISCONNECTED!");
       updateConnectionState(STATE_DISCONNECTED);
       break;
-    case WStype_TEXT: {
-      String rawPayload = "";
-      rawPayload.reserve(length);
+
+    case WStype_TEXT:
+      Serial.print("[WS] MESSAGE: ");
       for (size_t i = 0; i < length; i++) {
-        rawPayload += static_cast<char>(payload[i]);
+        Serial.print((char)payload[i]);
       }
-      handleIncomingPayload(rawPayload);
+      Serial.println();
+
+      {
+        String rawPayload = "";
+        rawPayload.reserve(length);
+
+        for (size_t i = 0; i < length; i++) {
+          rawPayload += static_cast<char>(payload[i]);
+        }
+
+        handleIncomingPayload(rawPayload);
+      }
       break;
-    }
+
     default:
       break;
   }
@@ -959,6 +973,8 @@ void handleSocket(WStype_t type, uint8_t *payload, size_t length) {
 // WIFI CONNECTION — UNCHANGED LOGIC, ANIMATED UI WHILE WAITING
 // ============================================================================
 void connectWifi() {
+  Serial.println("[WiFi] Connecting...");
+
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
@@ -967,17 +983,27 @@ void connectWifi() {
   drawLoading(0, contentY() + 60);
 
   uint8_t dotIndex = 0;
+
   while (WiFi.status() != WL_CONNECTED) {
     delay(WIFI_RETRY_DELAY_MS);
+
+    Serial.print("[WiFi] Status: ");
+    Serial.println(WiFi.status());
+
     drawLoading(dotIndex, contentY() + 60);
     dotIndex = (dotIndex + 1) % 3;
   }
-}
 
+  Serial.println("[WiFi] Connected!");
+  Serial.print("[WiFi] IP: ");
+  Serial.println(WiFi.localIP());
+}
 // ============================================================================
 // WEBSOCKET SETUP — UNCHANGED LOGIC
 // ============================================================================
 void connectWebSocket() {
+  Serial.println("[WS] Connecting to Render...");
+
   webSocket.beginSSL("realtime-display.onrender.com", 443, "/ws");
   webSocket.onEvent(handleSocket);
   webSocket.setReconnectInterval(WEBSOCKET_RECONNECT_MS);

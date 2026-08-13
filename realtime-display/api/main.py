@@ -32,7 +32,12 @@ OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 
 spotify_state: str | None = None
 spotify_tokens: dict[str, Any] = {}
+WEATHER_CACHE_TTL_SECONDS = 15 * 60
 
+weather_cache: dict[str, Any] = {
+    "data": None,
+    "updated_at": 0.0,
+}
 
 def weather_label(code: int) -> tuple[str, str]:
     if code == 0:
@@ -269,6 +274,17 @@ async def spotify_current() -> dict[str, Any]:
 
 @app.get("/weather")
 async def weather(lat: float = 41.0082, lon: float = 28.9784) -> dict[str, Any]:
+    import time
+
+    now = time.time()
+
+    # Cache'de güncel veri varsa dış API'ye tekrar gitme.
+    if (
+        weather_cache["data"] is not None
+        and now - weather_cache["updated_at"] < WEATHER_CACHE_TTL_SECONDS
+    ):
+        return weather_cache["data"]
+
     params = {
         "latitude": lat,
         "longitude": lon,
@@ -278,18 +294,45 @@ async def weather(lat: float = 41.0082, lon: float = 28.9784) -> dict[str, Any]:
         "forecast_days": 7,
     }
 
-    async with httpx.AsyncClient(timeout=10) as client:
-        response = await client.get(OPEN_METEO_FORECAST_URL, params=params)
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(
+                OPEN_METEO_FORECAST_URL,
+                params=params,
+            )
 
-    if response.status_code >= 400:
-        raise HTTPException(status_code=response.status_code, detail="Weather request failed.")
+        response.raise_for_status()
+
+    except httpx.HTTPStatusError as exc:
+        # Open-Meteo rate limit veya geçici hata verirse
+        # elimizde eski veri varsa onu kullan.
+        if weather_cache["data"] is not None:
+            return weather_cache["data"]
+
+        raise HTTPException(
+            status_code=502,
+            detail="Weather provider unavailable.",
+        ) from exc
+
+    except httpx.HTTPError as exc:
+        if weather_cache["data"] is not None:
+            return weather_cache["data"]
+
+        raise HTTPException(
+            status_code=502,
+            detail="Weather provider unavailable.",
+        ) from exc
 
     payload = response.json()
     current = payload.get("current") or {}
     daily = payload.get("daily") or {}
-    condition, label = weather_label(int(current.get("weather_code", -1)))
+
+    condition, label = weather_label(
+        int(current.get("weather_code", -1))
+    )
 
     forecast: list[dict[str, Any]] = []
+
     dates = daily.get("time", [])
     codes = daily.get("weather_code", [])
     max_temps = daily.get("temperature_2m_max", [])
@@ -297,30 +340,63 @@ async def weather(lat: float = 41.0082, lon: float = 28.9784) -> dict[str, Any]:
     rain_probs = daily.get("precipitation_probability_max", [])
 
     for index, date_text in enumerate(dates[:7]):
-        day_code = int(codes[index]) if index < len(codes) else -1
+        day_code = (
+            int(codes[index])
+            if index < len(codes)
+            else -1
+        )
+
         day_condition, day_label = weather_label(day_code)
+
         forecast.append(
             {
                 "day": short_day(str(date_text)),
                 "condition": day_condition,
                 "label": day_label,
                 "code": day_code,
-                "max": round(float(max_temps[index])) if index < len(max_temps) else 0,
-                "min": round(float(min_temps[index])) if index < len(min_temps) else 0,
-                "rain": int(rain_probs[index]) if index < len(rain_probs) and rain_probs[index] is not None else 0,
+                "max": (
+                    round(float(max_temps[index]))
+                    if index < len(max_temps)
+                    else 0
+                ),
+                "min": (
+                    round(float(min_temps[index]))
+                    if index < len(min_temps)
+                    else 0
+                ),
+                "rain": (
+                    int(rain_probs[index])
+                    if (
+                        index < len(rain_probs)
+                        and rain_probs[index] is not None
+                    )
+                    else 0
+                ),
             }
         )
 
-    return {
+    result = {
         "type": "weather",
         "location": "Istanbul",
-        "temperature": round(float(current.get("temperature_2m", 0))),
-        "humidity": int(current.get("relative_humidity_2m", 0)),
-        "wind": round(float(current.get("wind_speed_10m", 0))),
+        "temperature": round(
+            float(current.get("temperature_2m", 0))
+        ),
+        "humidity": int(
+            current.get("relative_humidity_2m", 0)
+        ),
+        "wind": round(
+            float(current.get("wind_speed_10m", 0))
+        ),
         "condition": condition,
         "label": label,
         "forecast": forecast,
     }
+
+    # Başarılı sonucu cache'e koy.
+    weather_cache["data"] = result
+    weather_cache["updated_at"] = now
+
+    return result
 
 
 @app.websocket("/ws")
