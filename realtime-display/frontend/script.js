@@ -1,4 +1,4 @@
-const socketUrl = "wss://realtime-display.onrender.com/ws";
+const socketUrl = "wss://realtime-display.onrender.com/ws?role=browser";
 const itemInput = document.querySelector("#itemInput");
 const sendButton = document.querySelector("#sendButton");
 const clearButton = document.querySelector("#clearButton");
@@ -33,7 +33,33 @@ let reconnectTimer;
 let spotifyTimer;
 let weatherTimer;
 let activePanel = "shopping";
-const shoppingItems = [];
+const STORAGE_PREFIX = "homeflow:";
+function loadSaved(name, fallback) {
+  try { const raw = localStorage.getItem(STORAGE_PREFIX + name); return raw === null ? fallback : JSON.parse(raw); }
+  catch { return fallback; }
+}
+function save(name, value) {
+  try { localStorage.setItem(STORAGE_PREFIX + name, JSON.stringify(value)); } catch { /* Storage may be disabled. */ }
+}
+const savedItems = loadSaved("shopping", null);
+let hasShoppingSnapshot = Array.isArray(savedItems);
+const shoppingItems = hasShoppingSnapshot ? savedItems.filter(item => typeof item === "string").slice(-8) : [];
+let spotifySession = loadSaved("spotifySession", "");
+let deviceCount = 0;
+let heartbeatTimer;
+let lastPongAt = 0;
+const pendingPayloads = new Map();
+const authFragment = new URLSearchParams(window.location.hash.slice(1));
+if (authFragment.has("spotify_session")) {
+  spotifySession = authFragment.get("spotify_session");
+  save("spotifySession", spotifySession);
+  save("spotifyEnabled", true);
+  window.history.replaceState(null, "", window.location.pathname + window.location.search);
+}
+spotifySwitch.checked = loadSaved("spotifyEnabled", Boolean(spotifySession));
+weatherSwitch.checked = loadSaved("weatherEnabled", false);
+weatherLat.value = loadSaved("weatherLat", "41.0082");
+weatherLon.value = loadSaved("weatherLon", "28.9784");
 const maxItems = 8;
 const apiBaseUrl = "https://realtime-display.onrender.com";
 
@@ -41,13 +67,13 @@ function setConnectionState(isConnected) {
   connectionStatus.classList.toggle("connected", isConnected);
   connectionStatus.classList.toggle("disconnected", !isConnected);
   connectionStatus.innerHTML = `<span aria-hidden="true">&bull;</span> ${
-    isConnected ? "Connected" : "Disconnected"
+    isConnected ? (deviceCount > 0 ? "ESP32 bagli" : "Sunucu bagli; ESP32 bekleniyor") : "Baglanti kuruluyor; liste saklaniyor"
   }`;
-  sendButton.disabled = !isConnected;
-  clearButton.disabled = !isConnected;
-  spotifySwitch.disabled = !isConnected;
+  sendButton.disabled = false;
+  clearButton.disabled = false;
+  spotifySwitch.disabled = false;
   refreshSpotifyButton.disabled = !isConnected;
-  weatherSwitch.disabled = !isConnected;
+  weatherSwitch.disabled = false;
   refreshWeatherButton.disabled = !isConnected;
 }
 
@@ -94,10 +120,12 @@ function renderShoppingList() {
 
 function sendSocketPayload(payload) {
   if (!socket || socket.readyState !== WebSocket.OPEN) {
-    return;
+    pendingPayloads.set(payload.type, payload);
+    return false;
   }
 
   socket.send(JSON.stringify(payload));
+  return true;
 }
 
 function getDisplayText() {
@@ -111,24 +139,61 @@ function getDisplayText() {
 }
 
 function connectSocket() {
-  socket = new WebSocket(socketUrl);
-
-  socket.addEventListener("open", () => {
+  const connection = new WebSocket(socketUrl);
+  socket = connection;
+  connection.addEventListener("open", () => {
+    if (socket !== connection) return;
     window.clearTimeout(reconnectTimer);
+    lastPongAt = Date.now();
     setConnectionState(true);
+    for (const payload of pendingPayloads.values()) sendSocketPayload(payload);
+    pendingPayloads.clear();
+    if (hasShoppingSnapshot) sendShoppingList();
+    if (spotifySwitch.checked) setSpotifyPolling(true);
+    if (weatherSwitch.checked) setWeatherPolling(true);
+    window.clearInterval(heartbeatTimer);
+    heartbeatTimer = window.setInterval(() => {
+      if (Date.now() - lastPongAt > 45000) { connection.close(); return; }
+      if (connection.readyState === WebSocket.OPEN) connection.send(JSON.stringify({type: "ping"}));
+    }, 20000);
   });
-
-  socket.addEventListener("close", () => {
+  connection.addEventListener("message", event => {
+    if (socket !== connection) return;
+    let data;
+    try { data = JSON.parse(event.data); } catch { return; }
+    if (data.type === "pong") { lastPongAt = Date.now(); return; }
+    if (data.type === "status") {
+      deviceCount = Number(data.devices) || 0;
+      setConnectionState(connection.readyState === WebSocket.OPEN);
+    } else if (data.type === "display") {
+      const lines = String(data.text || "").split("\n");
+      if (lines[0] === "ALISVERIS LISTESI") lines.shift();
+      shoppingItems.splice(0, shoppingItems.length, ...lines.filter(Boolean).map(line => line.replace(/^\d+\.\s*/, "")).slice(-maxItems));
+      hasShoppingSnapshot = true;
+      save("shopping", shoppingItems);
+      renderShoppingList();
+    } else if (data.type === "weather") {
+      weatherSwitch.checked = Boolean(data.enabled);
+      save("weatherEnabled", weatherSwitch.checked);
+      renderWeather(data.enabled ? data : null);
+    } else if (data.type === "spotify") {
+      // Receiving track data does not grant access to another browser's account.
+      renderSpotify(data);
+    }
+  });
+  connection.addEventListener("close", () => {
+    if (socket !== connection) return;
+    window.clearInterval(heartbeatTimer);
+    deviceCount = 0;
     setConnectionState(false);
     reconnectTimer = window.setTimeout(connectSocket, 1500);
   });
-
-  socket.addEventListener("error", () => {
-    socket.close();
-  });
+  connection.addEventListener("error", () => connection.close());
 }
 
 function sendShoppingList() {
+  hasShoppingSnapshot = true;
+  save("shopping", shoppingItems);
   sendSocketPayload({
     type: "display",
     text: getDisplayText(),
@@ -161,11 +226,21 @@ function renderSpotify(data) {
 }
 
 async function fetchSpotifyCurrent() {
-  const response = await fetch(`${apiBaseUrl}/spotify/current`);
-  if (!response.ok) {
-    throw new Error("Spotify current request failed");
+  if (!spotifySession) {
+    const error = new Error("Spotify Bagla ile hesabi bagla"); error.status = 401; throw error;
   }
-  return response.json();
+  const response = await fetch(`${apiBaseUrl}/spotify/current`, {
+    headers: {Authorization: `Bearer ${spotifySession}`}, signal: AbortSignal.timeout(30000), cache: "no-store"
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    const error = new Error(data.detail || "Spotify istegi basarisiz"); error.status = response.status; throw error;
+  }
+  if (data.session_token && data.session_token !== spotifySession) {
+    spotifySession = data.session_token;
+    save("spotifySession", spotifySession);
+  }
+  return data;
 }
 
 function iconForCondition(condition) {
@@ -256,7 +331,7 @@ function renderWeather(data) {
 async function fetchWeather() {
   const lat = encodeURIComponent(weatherLat.value || "41.0082");
   const lon = encodeURIComponent(weatherLon.value || "28.9784");
-  const response = await fetch(`${apiBaseUrl}/weather?lat=${lat}&lon=${lon}`);
+  const response = await fetch(`${apiBaseUrl}/weather?lat=${lat}&lon=${lon}`, {signal: AbortSignal.timeout(30000)});
   if (!response.ok) {
     throw new Error("Weather request failed");
   }
@@ -280,6 +355,9 @@ async function sendWeatherCurrent() {
 }
 
 function setWeatherPolling(enabled) {
+  save("weatherEnabled", enabled);
+  save("weatherLat", weatherLat.value);
+  save("weatherLon", weatherLon.value);
   window.clearInterval(weatherTimer);
   weatherTimer = undefined;
 
@@ -310,13 +388,14 @@ async function sendSpotifyCurrent() {
       album: data.album || "",
     });
   } catch (error) {
-    spotifyTrack.textContent = "Spotify baglantisi gerekli";
-    spotifyArtist.textContent = "Spotify Bagla ile hesabi yetkilendir";
+    spotifyTrack.textContent = error.status === 401 ? "Spotify baglantisi gerekli" : "Spotify bilgisi alinamadi";
+    spotifyArtist.textContent = error.status === 401 ? "Spotify Bagla ile yeniden baglan" : `Sunucu hatasi${error.status ? ` (${error.status})` : ""}; yeniden denenecek`;
     spotifyAlbum.textContent = "";
   }
 }
 
 function setSpotifyPolling(enabled) {
+  save("spotifyEnabled", enabled);
   window.clearInterval(spotifyTimer);
   spotifyTimer = undefined;
 
@@ -373,3 +452,16 @@ renderShoppingList();
 setConnectionState(false);
 setActivePanel("shopping");
 connectSocket();
+
+window.addEventListener("storage", event => {
+  if (event.key === STORAGE_PREFIX + "spotifySession") {
+    const wasConnected = Boolean(spotifySession);
+    spotifySession = loadSaved("spotifySession", "");
+    if (!wasConnected && spotifySession) { spotifySwitch.checked = true; setSpotifyPolling(true); }
+  }
+});
+window.addEventListener("focus", () => {
+  if (!socket || socket.readyState === WebSocket.CLOSED) connectSocket();
+  if (spotifySwitch.checked) sendSpotifyCurrent();
+  if (weatherSwitch.checked) sendWeatherCurrent();
+});
