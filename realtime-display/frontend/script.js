@@ -101,7 +101,7 @@ function setActivePanel(panel) {
 
 function renderShoppingList() {
   shoppingPreview.innerHTML = "";
-  itemCount.textContent = shoppingItems.length.toString();
+  if (activePanel === "shopping") itemCount.textContent = shoppingItems.length.toString();
 
   if (shoppingItems.length === 0) {
     const emptyItem = document.createElement("li");
@@ -177,7 +177,8 @@ function connectSocket() {
       save("weatherEnabled", weatherSwitch.checked);
       renderWeather(data.enabled ? data : null);
     } else if (data.type === "spotify") {
-      // Receiving track data does not grant access to another browser's account.
+      // Display the shared device state without sharing the browser's OAuth credential.
+      spotifySwitch.checked = Boolean(data.enabled);
       renderSpotify(data);
     }
   });
@@ -204,7 +205,7 @@ function sendShoppingList() {
 
 function renderSpotify(data) {
   const enabled = spotifySwitch.checked;
-  itemCount.textContent = enabled ? "ON" : "OFF";
+  if (activePanel === "spotify") itemCount.textContent = enabled ? "ON" : "OFF";
 
   if (!enabled) {
     spotifyTrack.textContent = "Spotify kapali";
@@ -289,7 +290,7 @@ function createWeatherEffect(condition) {
 
 function renderWeather(data) {
   const enabled = weatherSwitch.checked;
-  itemCount.textContent = enabled ? "ON" : "OFF";
+  if (activePanel === "weather") itemCount.textContent = enabled ? "ON" : "OFF";
 
   if (!enabled) {
     setWeatherConditionClass("unknown");
