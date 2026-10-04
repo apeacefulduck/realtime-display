@@ -214,7 +214,7 @@ function renderSpotify(data) {
     return;
   }
 
-  if (!data?.playing) {
+  if (!data?.title) {
     spotifyTrack.textContent = "Calan sarki yok";
     spotifyArtist.textContent = "Spotify'da bir parca baslat";
     spotifyAlbum.textContent = "";
@@ -223,7 +223,7 @@ function renderSpotify(data) {
 
   spotifyTrack.textContent = data.title || "Bilinmeyen sarki";
   spotifyArtist.textContent = data.artist || "Bilinmeyen sanatci";
-  spotifyAlbum.textContent = data.album || "";
+  spotifyAlbum.textContent = `${data.playing ? "Çalıyor" : "Duraklatıldı"} · ${data.album || ""}`;
 }
 
 async function fetchSpotifyCurrent() {
@@ -371,41 +371,30 @@ function setWeatherPolling(enabled) {
 }
 
 async function sendSpotifyCurrent() {
-  if (!spotifySwitch.checked) {
-    renderSpotify(null);
-    sendSocketPayload({ type: "spotify", enabled: false });
-    return;
-  }
-
-  try {
-    const data = await fetchSpotifyCurrent();
-    renderSpotify(data);
-    sendSocketPayload({
-      type: "spotify",
-      enabled: true,
-      playing: data.playing,
-      title: data.title || "",
-      artist: data.artist || "",
-      album: data.album || "",
-    });
-  } catch (error) {
-    spotifyTrack.textContent = error.status === 401 ? "Spotify baglantisi gerekli" : "Spotify bilgisi alinamadi";
-    spotifyArtist.textContent = error.status === 401 ? "Spotify Bagla ile yeniden baglan" : `Sunucu hatasi${error.status ? ` (${error.status})` : ""}; yeniden denenecek`;
+  if (!spotifySwitch.checked) { renderSpotify(null); return; }
+  try { renderSpotify(await fetchSpotifyCurrent()); }
+  catch (error) {
+    spotifyTrack.textContent = error.status === 401 ? "Spotify bağlantısı gerekli" : "Spotify bilgisi alınamadı";
+    spotifyArtist.textContent = error.status === 401 ? "Spotify Bağla ile yeniden yetkilendir" : error.message;
     spotifyAlbum.textContent = "";
   }
 }
 
-function setSpotifyPolling(enabled) {
+async function setSpotifyPolling(enabled) {
   save("spotifyEnabled", enabled);
   window.clearInterval(spotifyTimer);
   spotifyTimer = undefined;
-
-  if (enabled) {
-    sendSpotifyCurrent();
-    spotifyTimer = window.setInterval(sendSpotifyCurrent, 10000);
-  } else {
-    sendSpotifyCurrent();
-  }
+  if (!spotifySession) { await sendSpotifyCurrent(); return; }
+  try {
+    const response = await fetch(`${apiBaseUrl}/spotify/enabled`, {
+      method: "POST", headers: {Authorization: `Bearer ${spotifySession}`, "Content-Type": "application/json"},
+      body: JSON.stringify({enabled}), signal: AbortSignal.timeout(30000)
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || "Spotify bağlantısı gerekli");
+    renderSpotify(data);
+  } catch (error) { spotifyTrack.textContent = error.message; }
+  // Playback polling belongs to FastAPI; this tab can now be closed.
 }
 
 function addItemAndSend() {

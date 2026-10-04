@@ -15,8 +15,19 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from spotify_session import seal, unseal, make_session
+from spotify_player import SpotifyPlayer
+import logging
+from contextlib import asynccontextmanager
 
-app = FastAPI(title="ESP32 Live Display")
+@asynccontextmanager
+async def lifespan(app):
+    await player.start()
+    try:
+        yield
+    finally:
+        await player.stop()
+
+app = FastAPI(title="ESP32 Live Display", lifespan=lifespan)
 
 # --- CORS Ayarı ---
 app.add_middleware(
@@ -30,8 +41,7 @@ app.add_middleware(
 
 SPOTIFY_AUTH_URL = "https://accounts.spotify.com/authorize"
 SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
-SPOTIFY_NOW_PLAYING_URL = "https://api.spotify.com/v1/me/player/currently-playing"
-SPOTIFY_SCOPES = "user-read-currently-playing user-read-playback-state"
+SPOTIFY_SCOPES = "user-read-currently-playing user-read-playback-state user-modify-playback-state"
 OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 
 FRONTEND_ORIGIN = "https://realtime-display-lime.vercel.app"
@@ -88,7 +98,7 @@ def spotify_token_auth() -> tuple[str, str]:
     return client_id, client_secret
 
 
-async def spotify_get(url: str, session: str) -> tuple[httpx.Response, str]:
+async def spotify_get(url: str, session: str, method: str = "GET") -> tuple[httpx.Response, str]:
     tokens = unseal(session, "session")
     refresh_token = tokens.get("refresh_token")
     if not refresh_token:
@@ -105,6 +115,7 @@ async def spotify_get(url: str, session: str) -> tuple[httpx.Response, str]:
                 raise HTTPException(401, "Spotify session expired. Connect Spotify again.")
             if response.status_code >= 400:
                 raise HTTPException(502, "Spotify token service unavailable.")
+            logging.getLogger("uvicorn.error.homeflow.spotify").info("Spotify token refreshed")
             refreshed = response.json()
             tokens = {"purpose": "session", "access_token": refreshed["access_token"],
                 "refresh_token": refreshed.get("refresh_token", refresh_token),
@@ -112,7 +123,7 @@ async def spotify_get(url: str, session: str) -> tuple[httpx.Response, str]:
             if len(spotify_access_cache) >= 100:
                 spotify_access_cache.clear()
             spotify_access_cache[cache_key] = tokens
-        response = await client.get(url, headers={"Authorization": f"Bearer {tokens['access_token']}"})
+        response = await client.request(method, url, headers={"Authorization": f"Bearer {tokens['access_token']}"})
         if response.status_code == 401:
             spotify_access_cache.pop(cache_key, None)
             tokens["expires_at"] = 0
@@ -127,7 +138,7 @@ async def spotify_get(url: str, session: str) -> tuple[httpx.Response, str]:
                 refresh_token=payload.get("refresh_token", tokens["refresh_token"]),
                 expires_at=time.time() + payload.get("expires_in", 3600))
             spotify_access_cache[cache_key] = tokens
-            response = await client.get(url, headers={"Authorization": f"Bearer {tokens['access_token']}"})
+            response = await client.request(method, url, headers={"Authorization": f"Bearer {tokens['access_token']}"})
     return response, seal(tokens)
 
 
@@ -227,9 +238,24 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+async def publish_spotify(state):
+    await manager.broadcast(json.dumps(state, ensure_ascii=False), sender=None)
+
+
+player = SpotifyPlayer(spotify_get, publish_spotify,
+    lambda: bool(manager.active_connections), unseal)
+
+
+def device_can_control(websocket):
+    expected = os.getenv("HOMEFLOW_DEVICE_TOKEN", "")
+    supplied = websocket.headers.get("x-homeflow-device-token", "")
+    return bool(expected and secrets.compare_digest(expected, supplied))
+
+
 @app.get("/health")
 async def health() -> dict[str, Any]:
-    return {"status": "ok", "version": "2026-10-04-data-recovery", "worker": os.getpid(),
+    return {"status": "ok", "version": "2026-10-04-spotify-v2", "worker": os.getpid(),
+        "spotify_control_configured": bool(os.getenv("HOMEFLOW_DEVICE_TOKEN")),
         "clients": len(manager.active_connections),
         "devices": sum(role == "device" for role in manager.roles.values()),
         "streams": list(manager.latest)}
@@ -258,13 +284,25 @@ async def spotify_callback(request: Request) -> RedirectResponse:
         raise HTTPException(400, "Invalid Spotify callback.")
     unseal(state, "oauth-state", ttl=600)
     _, _, redirect_uri = spotify_config()
-    async with httpx.AsyncClient(timeout=15) as client:
-        response = await client.post(SPOTIFY_TOKEN_URL,
-            data={"grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri},
-            auth=spotify_token_auth())
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.post(SPOTIFY_TOKEN_URL,
+                data={"grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri},
+                auth=spotify_token_auth())
+    except httpx.HTTPError as exc:
+        raise HTTPException(502, "Spotify authorization service unavailable.") from exc
     if response.status_code >= 400:
         raise HTTPException(400, "Spotify authorization failed.")
-    session = make_session(response.json())
+    try:
+        session = make_session(response.json())
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(502, "Invalid Spotify authorization response.") from exc
+    async with player.lock:
+        player.remember(session)
+        player.enabled = True
+        player.last_fetch = 0
+        player.retry_at = 0
+    logging.getLogger("uvicorn.error.homeflow.spotify").info("Spotify authorization completed")
     # A URL fragment is never sent to Vercel or included in HTTP request logs.
     result = RedirectResponse(FRONTEND_ORIGIN + "/#spotify_session=" + session,
         headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
@@ -272,27 +310,53 @@ async def spotify_callback(request: Request) -> RedirectResponse:
     return result
 
 
-@app.get("/spotify/current")
-async def spotify_current(request: Request) -> dict[str, Any]:
+def request_session(request: Request) -> str:
     authorization = request.headers.get("authorization", "")
     if not authorization.startswith("Bearer "):
-        raise HTTPException(401, "Spotify account is not connected.")
+        raise HTTPException(401, "authorization_required")
+    session = authorization[7:]
+    unseal(session, "session")
+    return session
+
+
+async def request_object(request: Request) -> dict:
     try:
-        response, session = await spotify_get(SPOTIFY_NOW_PLAYING_URL, authorization[7:])
-    except httpx.HTTPError as exc:
-        raise HTTPException(502, "Spotify service unavailable.") from exc
-    if response.status_code == 204:
-        return {"connected": True, "playing": False, "session_token": session}
-    if response.status_code >= 400:
-        raise HTTPException(response.status_code, "Spotify request failed.")
-    payload = response.json()
-    item = payload.get("item") or {}
-    artists = ", ".join(artist.get("name", "") for artist in item.get("artists", [])).strip(", ")
-    return {"connected": True, "playing": bool(payload.get("is_playing")),
-        "title": item.get("name", ""), "artist": artists,
-        "album": (item.get("album") or {}).get("name", ""),
-        "progress_ms": payload.get("progress_ms", 0), "duration_ms": item.get("duration_ms", 0),
-        "session_token": session}
+        body = await request.json()
+    except (ValueError, UnicodeError) as exc:
+        raise HTTPException(400, "invalid_json") from exc
+    if not isinstance(body, dict):
+        raise HTTPException(400, "invalid_json_object")
+    return body
+
+
+@app.get("/spotify/current")
+async def spotify_current(request: Request) -> dict[str, Any]:
+    state = await player.refresh(request_session(request))
+    return {**state, "session_token": player.session}
+
+
+@app.post("/spotify/enabled")
+async def spotify_enabled(request: Request) -> dict[str, Any]:
+    session = request_session(request)
+    body = await request_object(request)
+    if not isinstance(body, dict) or not isinstance(body.get("enabled"), bool):
+        raise HTTPException(400, "enabled_must_be_boolean")
+    return await player.set_enabled(session, body["enabled"])
+
+
+@app.post("/spotify/control")
+async def spotify_control(request: Request) -> dict[str, Any]:
+    session = request_session(request)
+    body = await request_object(request)
+    action = body.get("action") if isinstance(body, dict) else None
+    if not isinstance(action, str):
+        raise HTTPException(400, "invalid_action")
+    # Only the connected household session can control its player.
+    incoming = unseal(session, "session")
+    current = unseal(player.session, "session") if player.session else {}
+    if incoming.get("refresh_token") != current.get("refresh_token"):
+        raise HTTPException(403, "different_spotify_session")
+    return await player.control(action)
 
 
 @app.get("/weather")
@@ -439,6 +503,22 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             payload = json.loads(message)
             if isinstance(payload, dict) and payload.get("type") == "ping":
                 await websocket.send_json({"type": "pong"})
+            elif isinstance(payload, dict) and payload.get("type") == "spotify_control":
+                action = payload.get("action")
+                try:
+                    if not device_can_control(websocket):
+                        raise HTTPException(403, "device_not_paired")
+                    if not isinstance(action, str):
+                        raise HTTPException(400, "invalid_action")
+                    result = await player.control(action)
+                except HTTPException as exc:
+                    result = {"type": "spotify_control_result", "ok": False,
+                              "action": action if isinstance(action, str) else "",
+                              "error": str(exc.detail), "status": exc.status_code}
+                await websocket.send_json(result)
+            elif isinstance(payload, dict) and payload.get("type") == "spotify":
+                # Legacy browsers must not overwrite the authoritative server state.
+                await websocket.send_json(player.state)
             else:
                 await manager.broadcast(message, sender=websocket)
     except WebSocketDisconnect:
