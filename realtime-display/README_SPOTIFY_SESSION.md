@@ -1,6 +1,6 @@
 # HomeFlow Spotify — Render Free + Supabase Free
 
-5 Ekim 2026: Kod ve harici depolama hazır; 53 backend testi, frontend regresyonları ve syntax kontrolü geçti. Supabase tablosu canlıda kuruldu ve erişim sınırları doğrulandı. Render/Vercel dağıtımı ve gerçek Spotify/ESP32 restart testleri, Supabase backend anahtarının Render'a eklenmesini bekliyor.
+5 Ekim 2026: Düzeltme Render Free ve Vercel'de canlıya alındı (kod commit fef40cf). Kullanıcının mevcut Supabase secret key'i yalnız Render sunucu ortamına eklendi. Gerçek Spotify oturumu şifreli olarak Supabase'e taşındı. Üç gerçek Render restart ve USB'den gerçek ESP32 restart sonrasında oturum otomatik geri yüklendi. 53 backend testi, frontend regresyonları ve syntax kontrolü geçti.
 
 ## İnceleme
 
@@ -30,7 +30,7 @@ Proje: https://slnmmiirixgebphazlle.supabase.co. Kuruluş homeflow, plan Free. M
 
 public.homeflow_sessions tek spotify slot'unda yalnız ciphertext tutar. RLS açık, public/anon/authenticated erişimi kaldırıldı; service_role SELECT/INSERT/UPDATE yapabilir. Policy olmaması deny-by-default için bilinçlidir. Advisor'ın [RLS enabled no policy INFO](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy) kaydı bu durum içindir.
 
-Canlı sorgu: RLS true, anon_can_read false, authenticated_can_read false, backend_can_use true. SQL insert/read rollback ile geçti. Public anahtarla gerçek REST read HTTP 401 ile reddedildi. Gerçek Spotify tokenı henüz aktarılmadı.
+Canlı sorgu: RLS true, anon_can_read false, authenticated_can_read false, backend_can_use true. SQL insert/read rollback ile geçti. Public anahtarla gerçek REST read HTTP 401 ile reddedildi. Gerçek oturum kaydı tek satır Fernet ciphertext olarak mevcut; doğrulamada yalnız kayıt sayısı/şifreli zarf bilgisi okundu, tokenlar rapora alınmadı.
 
 Render Environment:
 
@@ -56,7 +56,11 @@ Supabase Free, düşük aktiviteyle yaklaşık 7 günlük dönemde projeyi durak
 
 53 backend testi geçti. İlk bağlantı/callback, 4 bağımsız player başlangıcı, başka cwd'den 3 ayrı süreç restart, expiry, 401 retry, refresh token yok/null/boş/rotasyon, revoke/bozuk kayıt, 12 paralel çağrı ve WebSocket reconnect test edildi. Supabase ciphertext upsert/yeni service restore, HTTP hata ayrımı, yanlış config'te ephemeral dosyaya düşmeme, store kesintisinden otomatik kurtarma ve event loop açık kalması da sınandı.
 
-Play/pause/resume/next/previous, paused metadata, artwork, aktif cihaz, diğer shopping/weather stream'leri ve browser olmadan polling regresyonları geçti. Firmware değişmedi. Gerçek hesapta kapat/aç, birkaç açılış ve fiziksel ESP32/Render restart senaryoları henüz yapılmadı; canlı dağıtım sonrası doğrulanmalı.
+Play/pause/resume/next/previous, paused metadata, artwork, aktif cihaz, diğer shopping/weather stream'leri ve browser olmadan polling regresyonları geçti. Firmware değişmedi.
+
+Canlıda üç ardışık Render restart'ta worker 65 → 63 → 64 oldu. Her kontrolde session_stored true, authorization_required false, session_store_unavailable false ve cihaz bağlantısı mevcut. Başlangıç loglarında Stored session found → Restoring session → Access token refreshed → Session restored successfully görüldü. COM8 ESP32 firmware yazmadan resetlendi; boot, WiFi ve Render WebSocket yeniden bağlantısı seri olaylarıyla doğrulandı. Son canlı Spotify state: connected true, enabled true, error boş. WebSocket ping/pong ve spotify/display/weather stream'leri, hava API'sinin 7 günlük yanıtı doğrulandı.
+
+Kontrol sırasında aktif Spotify oynatma cihazı veya parça yoktu. Gerçek şarkı/album art ve play/pause etkisi bu canlı kontrolde doğrulanamadı; bu özelliklerin otomatik testleri geçti. Expiry, eksik refresh token ve revoked-token senaryoları kontrollü testlerde sınandı; kullanıcının canlı yetkisi kaldırılmadı. Startup restore sunucunun client mesajlarını kabul etmesinden önce çalışır; kullanıcının tüm tarayıcılarını fiziksel olarak kapatma testi yapılmadı.
 
 HTTP testlerinde Spotify/Supabase taklit yanıtları kullanıldı; ayrı SQL/REST kontrolleri gerçek Supabase üzerinde yapıldı. Mevcut FastAPI/Starlette bağımlılıklarından 8 deprecation uyarısı var.
 
