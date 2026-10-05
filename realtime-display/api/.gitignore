@@ -4,3 +4,4 @@ __pycache__/
 .spotify-session.*.tmp
 .env
 .env.*
+.homeflow-notes.sqlite3*

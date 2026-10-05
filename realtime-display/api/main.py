@@ -18,6 +18,7 @@ from spotify_player import SpotifyPlayer
 from spotify_auth import SpotifyAuthManager
 import logging
 from contextlib import asynccontextmanager
+import notes_api
 
 @asynccontextmanager
 async def lifespan(app):
@@ -28,6 +29,7 @@ async def lifespan(app):
         await player.stop()
 
 app = FastAPI(title="ESP32 Live Display", lifespan=lifespan)
+app.include_router(notes_api.router)
 
 # --- CORS Ayarı ---
 app.add_middleware(
@@ -186,7 +188,7 @@ class ConnectionManager:
         async with self.lock:
             payload = json.loads(message)
             kind = payload.get("type") if isinstance(payload, dict) else None
-            if kind in {"display", "weather", "spotify"}:
+            if kind in {"weather", "spotify"}:
                 self.latest[kind] = message
             for connection in tuple(self.active_connections):
                 if connection is sender:
@@ -214,9 +216,17 @@ def device_can_control(websocket):
     return bool(expected and secrets.compare_digest(expected, supplied))
 
 
+async def publish_notes_change(payload):
+    await manager.broadcast(json.dumps(payload, ensure_ascii=False), sender=None)
+
+
+notes_api.publish_change = publish_notes_change
+notes_api.device_authorized = device_can_control
+
+
 @app.get("/health")
 async def health() -> dict[str, Any]:
-    return {"status": "ok", "version": "2026-10-05-spotify-persistence", "worker": os.getpid(),
+    return {"status": "ok", "version": "2026-10-05-notes", "worker": os.getpid(),
         "spotify_control_configured": bool(os.getenv("HOMEFLOW_DEVICE_TOKEN")),
         "clients": len(manager.active_connections),
         "devices": sum(role == "device" for role in manager.roles.values()),
@@ -454,16 +464,15 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         while True:
             raw_message = await websocket.receive_text()
 
-            # NOTE: previously this only broadcast when text was non-empty.
-            # Clearing the shopping list sends text="" (falsy in Python),
-            # so that event was silently dropped and never reached the
-            # ESP32 (or any other connected client). Broadcasting
-            # unconditionally lets an empty text act as a real "clear"
-            # signal downstream.
             message = normalize_websocket_message(raw_message)
             payload = json.loads(message)
             if isinstance(payload, dict) and payload.get("type") == "ping":
                 await websocket.send_json({"type": "pong"})
+            elif isinstance(payload, dict) and payload.get("type") in {"notes_list", "notes_open", "notes_set"}:
+                await notes_api.handle_socket(websocket, payload)
+            elif isinstance(payload, dict) and payload.get("type") in {"notes", "note_items", "notes_changed", "notes_result", "notes_error", "display"}:
+                # Old browser snapshots must never overwrite durable checklist data.
+                await websocket.send_json({"type": "notes_changed", "legacy_display_ignored": True})
             elif isinstance(payload, dict) and payload.get("type") == "spotify_control":
                 action = payload.get("action")
                 try:
@@ -489,6 +498,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         await websocket.close(code=1011)
 
     finally:
+        notes_api.views.pop(websocket, None)
         manager.disconnect(websocket)
         async with manager.lock:
             await manager.send_status()
