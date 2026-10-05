@@ -514,6 +514,10 @@ async function setSpotifyPolling(enabled) {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.detail || "Spotify bağlantısı gerekli");
+    if (data.session_token && data.session_token !== spotifySession) {
+      spotifySession = data.session_token;
+      save("spotifySession", spotifySession);
+    }
     renderSpotify(data);
   } catch (error) { spotifyTrack.textContent = error.message; feedback("spotifyFeedback", "Spotify ayarı kaydedilemedi. Hesabınızı yeniden bağlayın veya tekrar deneyin.", true); }
   // Playback polling belongs to FastAPI; this tab can now be closed.

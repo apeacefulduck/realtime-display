@@ -1,3 +1,6 @@
 __pycache__/
 .spotify-session
 .spotify-session.tmp
+.spotify-session.*.tmp
+.env
+.env.*

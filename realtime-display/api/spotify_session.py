@@ -8,7 +8,8 @@ import time
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import HTTPException
 
-SESSION_TTL = 30 * 24 * 60 * 60
+# Spotify decides when authorization expires. OAuth state still has a 600s TTL.
+SESSION_TTL = None
 
 def cipher():
     secret = os.environ.get('SPOTIFY_CLIENT_SECRET', '')

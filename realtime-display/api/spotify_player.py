@@ -8,9 +8,7 @@ import contextlib
 import json
 import logging
 import math
-import os
 import time
-from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
@@ -73,9 +71,10 @@ def playback_state(payload):
 
 
 class SpotifyPlayer:
-    def __init__(self, request, publish, has_clients, validate):
+    def __init__(self, request, publish, has_clients, validate, auth):
         self.request, self.publish = request, publish
         self.has_clients, self.validate = has_clients, validate
+        self.auth = auth
         self.lock = asyncio.Lock()
         self.session = ""
         self.enabled = True
@@ -84,27 +83,31 @@ class SpotifyPlayer:
         self.last_fetch = 0.0
         self.last_command = 0.0
         self.task = None
-        self.path = Path(os.getenv("SPOTIFY_SESSION_FILE", ".spotify-session"))
+        self.path = getattr(auth.store, 'path', None)
 
-    def remember(self, session):
-        self.validate(session, "session")
-        changed = session != self.session
-        self.session = session
-        if changed:
-            try:
-                self.path.parent.mkdir(parents=True, exist_ok=True)
-                temporary = self.path.with_suffix(".tmp")
-                temporary.write_text(session, encoding="utf-8")
-                temporary.chmod(0o600)
-                temporary.replace(self.path)
-            except OSError:
-                log.warning("Spotify session persistence unavailable; session remains in memory")
+    async def remember(self, session):
+        self.session = await self.auth.authorize(session)
+
+    async def restore_session(self):
+        if await self.auth.load():
+            restored = await self.auth.restore()
+            self.session = self.auth.session
+            self.enabled = self.auth.enabled
+            self.state = empty_state("" if restored else "authorization_required" if self.auth.invalid else "service_unavailable",
+                                     connected=bool(self.session))
+            if restored and self.enabled:
+                try:
+                    await self.fetch_locked()
+                except HTTPException:
+                    pass
+            elif not self.enabled:
+                self.state = empty_state()
+        elif self.auth.load_failed:
+            self.state = empty_state('session_store_unavailable')
 
     async def start(self):
-        try:
-            self.remember(self.path.read_text(encoding="utf-8").strip())
-        except (OSError, HTTPException):
-            pass
+        async with self.lock:
+            await self.restore_session()
         await self.publish(self.state)
         self.task = asyncio.create_task(self.poll())
 
@@ -116,6 +119,10 @@ class SpotifyPlayer:
 
     async def poll(self):
         while True:
+            if self.auth.load_failed and self.has_clients():
+                async with self.lock:
+                    await self.restore_session()
+                    await self.publish(self.state)
             if self.session and self.enabled and self.has_clients():
                 try:
                     await self.refresh()
@@ -146,7 +153,7 @@ class SpotifyPlayer:
             raise HTTPException(401, "authorization_required")
         try:
             response, session = await self.request(PLAYER + ("/" + suffix if suffix else ""), self.session, method)
-            self.remember(session)
+            await self.remember(session)
             self.check_response(response)
             return response
         except httpx.HTTPError as exc:
@@ -189,7 +196,9 @@ class SpotifyPlayer:
     async def refresh(self, session=None):
         async with self.lock:
             if session:
-                self.remember(session)
+                await self.remember(session)
+                if self.auth.restore_pending:
+                    self.last_fetch = 0
             if not self.enabled:
                 return self.state
             if self.last_fetch and time.monotonic() - self.last_fetch < POLL_SECONDS:
@@ -198,7 +207,8 @@ class SpotifyPlayer:
 
     async def set_enabled(self, session, enabled):
         async with self.lock:
-            self.remember(session)
+            await self.remember(session)
+            await self.auth.set_enabled(enabled)
             self.enabled = enabled
             self.last_fetch = 0
             if not enabled:
