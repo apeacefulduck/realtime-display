@@ -1,95 +1,84 @@
 <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="referrer" content="no-referrer" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ESP32 Shopping List Display</title>
-    <link rel="stylesheet" href="style.css" />
-  </head>
-  <body>
-    <main class="shell">
-      <section class="panel" aria-label="ESP32 shopping list display control">
-        <div class="panel-header">
-          <h1>ESP32 Live Display</h1>
-          <p id="connectionStatus" class="status disconnected">
-            <span aria-hidden="true">&bull;</span>
-            Disconnected
-          </p>
-        </div>
-
-        <nav class="tabs" aria-label="Display mode">
-          <button id="shoppingTab" class="tab active" type="button">Alisveris</button>
-          <button id="spotifyTab" class="tab" type="button">Spotify</button>
-          <button id="weatherTab" class="tab" type="button">Hava</button>
-        </nav>
-
-        <div class="tft-frame" aria-label="TFT display preview">
-          <div class="tft-screen">
-            <div class="tft-topbar">
-              <span id="previewTitle">SHOPPING LIST</span>
-              <span id="itemCount">0</span>
-            </div>
-            <ol id="shoppingPreview" class="shopping-preview">
-              <li class="empty">Liste bos</li>
-            </ol>
-            <div id="spotifyPreview" class="spotify-preview" hidden>
-              <p id="spotifyTrack" class="track">Spotify baglanmadi</p>
-              <p id="spotifyArtist" class="artist">Hesabini bagla ve switch'i ac</p>
-              <p id="spotifyAlbum" class="album"></p>
-            </div>
-            <div id="weatherPreview" class="weather-preview" hidden>
-              <div class="weather-current">
-                <span id="weatherIcon" class="weather-icon">SUN</span>
-                <div>
-                  <p id="weatherTemp" class="weather-temp">-- C</p>
-                  <p id="weatherLabel" class="weather-label">Hava bilgisi bekleniyor</p>
-                </div>
-              </div>
-              <div id="weatherForecast" class="weather-forecast"></div>
-            </div>
-          </div>
-        </div>
-
-        <div id="shoppingControls" class="controls">
-          <div class="composer">
-            <input
-              id="itemInput"
-              type="text"
-              maxlength="32"
-              placeholder="Alisveris urunu yaz"
-              autocomplete="off"
-            />
-            <button id="sendButton" type="button">Ekle</button>
-          </div>
-          <button id="clearButton" class="secondary-button" type="button">Listeyi Sifirla</button>
-        </div>
-
-        <div id="spotifyControls" class="controls" hidden>
-          <a class="spotify-login" href="https://realtime-display.onrender.com/spotify/login" target="_blank" rel="noreferrer">
-            Spotify Bagla
-          </a>
-          <label class="switch-row">
-            <span>Spotify bilgisini ekranda goster</span>
-            <input id="spotifySwitch" type="checkbox" />
-          </label>
-          <button id="refreshSpotifyButton" class="secondary-button" type="button">Sarkiyi Yenile</button>
-        </div>
-
-        <div id="weatherControls" class="controls" hidden>
-          <div class="coordinate-grid">
-            <input id="weatherLat" type="number" step="0.0001" value="41.0082" aria-label="Latitude" />
-            <input id="weatherLon" type="number" step="0.0001" value="28.9784" aria-label="Longitude" />
-          </div>
-          <label class="switch-row">
-            <span>Hava bilgisini ekranda goster</span>
-            <input id="weatherSwitch" type="checkbox" />
-          </label>
-          <button id="refreshWeatherButton" class="secondary-button" type="button">Havayi Yenile</button>
-        </div>
-      </section>
-    </main>
-
-    <script src="script.js"></script>
-  </body>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="referrer" content="no-referrer" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0B1117" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='8'%20fill='%2317332f'/%3E%3Cpath%20d='M7%2014l9-7%209%207v11H7zM12%2025V16h8v9'%20fill='none'%20stroke='%232dd4bf'%20stroke-width='2'/%3E%3C/svg%3E" />
+  <title>HomeFlow · Kontrol Paneli</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <svg class="icon-library" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="icon-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10H3zM9 20v-7h6v7"/></symbol>
+    <symbol id="icon-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+    <symbol id="icon-music" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13M9 9l12-2"/><ellipse cx="6" cy="18" rx="3" ry="3"/><ellipse cx="18" cy="16" rx="3" ry="3"/></symbol>
+    <symbol id="icon-weather" viewBox="0 0 24 24"><path d="M7 3v2M2 8h2m-1-5 2 2m7-2-2 2"/><path d="M7 12a4 4 0 1 1 4-4M8 20a4 4 0 1 1 1-8 6 6 0 0 1 11 3 2.5 2.5 0 0 1 0 5z"/></symbol>
+    <symbol id="icon-device" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/></symbol>
+    <symbol id="icon-trash" viewBox="0 0 24 24"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></symbol>
+    <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="weather-clear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></symbol>
+    <symbol id="weather-cloudy" viewBox="0 0 24 24"><path d="M7 19a5 5 0 1 1 .7-10A6 6 0 0 1 19 11a4 4 0 0 1 0 8z"/></symbol>
+    <symbol id="weather-rain" viewBox="0 0 24 24"><path d="M6 15a4 4 0 1 1 1-8 5 5 0 0 1 10 2 3 3 0 0 1 1 6M8 18l-1 3m6-3-1 3m6-3-1 3"/></symbol>
+    <symbol id="weather-snow" viewBox="0 0 24 24"><path d="M12 2v20M3.3 7l17.4 10M3.3 17 20.7 7M9 3l3 3 3-3M9 21l3-3 3 3M3 10l4-1-1-4m12 14-1-4 4-1M3 14l4 1-1 4m12-14-1 4 4 1"/></symbol>
+    <symbol id="weather-storm" viewBox="0 0 24 24"><path d="M6 15a4 4 0 1 1 1-8 5 5 0 0 1 10 2 3 3 0 0 1 1 6M12 13l-3 5h4l-2 5"/></symbol>
+    <symbol id="weather-fog" viewBox="0 0 24 24"><path d="M6 12a4 4 0 1 1 1-8 5 5 0 0 1 10 2 3 3 0 0 1 1 6M3 16h18M5 20h14"/></symbol>
+  </svg>
+  <main class="shell">
+    <header class="header">
+      <div class="brand"><div class="brand-mark"><svg class="icon"><use href="#icon-home"/></svg></div><div><h1>HomeFlow<span class="brand-dot">.</span></h1><p>Smart Home Display</p></div></div>
+      <div class="connection"><p id="connectionStatus" class="status connecting" role="status">Bağlantı kuruluyor</p><p id="lastSync" class="caption">Henüz veri alınmadı</p></div>
+    </header>
+    <nav class="tabs" role="tablist" aria-label="Kontrol alanları">
+      <button id="shoppingTab" class="tab active" role="tab" aria-selected="true" aria-controls="shoppingControls" type="button"><svg class="icon"><use href="#icon-list"/></svg>Alışveriş</button>
+      <button id="spotifyTab" class="tab" role="tab" aria-selected="false" aria-controls="spotifyControls" tabindex="-1" type="button"><svg class="icon"><use href="#icon-music"/></svg>Spotify</button>
+      <button id="weatherTab" class="tab" role="tab" aria-selected="false" aria-controls="weatherControls" tabindex="-1" type="button"><svg class="icon"><use href="#icon-weather"/></svg>Hava</button>
+      <button id="deviceTab" class="tab" role="tab" aria-selected="false" aria-controls="deviceControls" tabindex="-1" type="button"><svg class="icon"><use href="#icon-device"/></svg>Cihaz</button>
+    </nav>
+    <div id="connectionNotice" class="connection-notice" role="status">Sunucuya bağlanılıyor. Listeniz bu tarayıcıda saklanır.</div>
+    <div class="dashboard">
+      <div class="control-area">
+        <section id="shoppingControls" class="controls" role="tabpanel" aria-labelledby="shoppingTab" tabindex="0">
+          <div class="section-heading"><div><p class="eyebrow">EVİNİZ İÇİN</p><h2>Alışveriş listesi</h2></div><span id="shoppingCount" class="count">0 ürün</span></div>
+          <p class="section-description">Aklınızdakileri listeye ekleyin, ev ekranınızda takip edin.</p>
+          <div class="list-surface"><ul id="shoppingList" class="shopping-list"></ul></div>
+          <div class="composer"><label class="sr-only" for="itemInput">Eklenecek ürün</label><input id="itemInput" type="text" maxlength="32" placeholder="Ürün ekle…" autocomplete="off" /><button id="sendButton" class="primary-button" type="button"><svg class="icon"><use href="#icon-plus"/></svg>Ekle</button></div>
+          <div class="list-footer"><p id="shoppingSync" class="caption" role="status">Liste yükleniyor</p><button id="clearButton" class="text-button danger" type="button"><svg class="icon"><use href="#icon-trash"/></svg>Listeyi temizle</button></div>
+          <p class="helper">Eklemenizi Enter ile tamamlayabilirsiniz. Ekranda son 8 ürün tutulur.</p>
+        </section>
+        <section id="spotifyControls" class="controls" role="tabpanel" aria-labelledby="spotifyTab" tabindex="0" hidden>
+          <div class="section-heading"><div><p class="eyebrow">EVİN RİTMİ</p><h2>Spotify</h2></div><span id="spotifyPlayback" class="count">Kapalı</span></div>
+          <p class="section-description">Çalan parçayı ve albüm kapağını ev ekranınıza taşıyın.</p>
+          <div class="media-card"><div class="album-placeholder" id="spotifyArtPlaceholder"><svg class="icon"><use href="#icon-music"/></svg></div><img id="spotifyArt" class="album-art" alt="Albüm kapağı" referrerpolicy="no-referrer" hidden /><div class="media-info"><h3 id="spotifyControlTrack">Şu anda çalan bir parça yok.</h3><p id="spotifyControlArtist">Spotify hesabınızı bağlayarak başlayın.</p><p id="spotifyControlAlbum" class="caption"></p></div></div>
+          <div id="spotifyProgressArea" class="progress-area" hidden><progress id="spotifyProgress" max="1" value="0" aria-label="Parça ilerlemesi"></progress><div class="progress-times"><span id="spotifyElapsed"></span><span id="spotifyDuration"></span></div></div>
+          <p id="spotifyDevice" class="caption" hidden></p><p id="spotifyFeedback" class="inline-feedback" role="status" hidden></p>
+          <div class="settings"><label class="switch-row" for="spotifySwitch"><span><strong>Ev ekranında göster</strong><small>Çalan parça bilgisi otomatik güncellenir.</small></span><input id="spotifySwitch" type="checkbox" role="switch" /></label><div class="action-row"><a class="primary-button" href="https://realtime-display.onrender.com/spotify/login" target="_blank" rel="noreferrer">Spotify bağla <span aria-hidden="true">↗</span></a><button id="refreshSpotifyButton" class="secondary-button" type="button">Parçayı yenile</button></div></div>
+        </section>
+        <section id="weatherControls" class="controls" role="tabpanel" aria-labelledby="weatherTab" tabindex="0" hidden>
+          <div class="section-heading"><div><p class="eyebrow">DIŞARIDA BUGÜN</p><h2>Hava durumu</h2></div><span id="weatherLocation" class="count">Konum bekleniyor</span></div>
+          <p class="section-description">Günün havası ve önümüzdeki günler, bir bakışta.</p>
+          <div class="weather-card"><div class="weather-summary"><span id="weatherControlIcon" aria-hidden="true">—</span><div><p id="weatherControlTemp" class="temperature">—</p><p id="weatherControlLabel">Hava bilgisi bekleniyor.</p></div></div><dl class="weather-metrics"><div><dt>Nem</dt><dd id="weatherHumidity">—</dd></div><div><dt>Rüzgâr</dt><dd id="weatherWind">—</dd></div></dl></div>
+          <div id="weatherControlForecast" class="forecast-grid"></div><p id="weatherFeedback" class="inline-feedback" role="status" hidden></p>
+          <div class="settings"><div class="coordinate-grid"><label for="weatherLat">Enlem<input id="weatherLat" type="number" min="-90" max="90" step="0.0001" value="41.0082" /></label><label for="weatherLon">Boylam<input id="weatherLon" type="number" min="-180" max="180" step="0.0001" value="28.9784" /></label></div><label class="switch-row" for="weatherSwitch"><span><strong>Ev ekranında göster</strong><small>Hava bilgisi 15 dakikada bir yenilenir.</small></span><input id="weatherSwitch" type="checkbox" role="switch" /></label><button id="refreshWeatherButton" class="secondary-button" type="button">Havayı yenile</button></div>
+        </section>
+        <section id="deviceControls" class="controls" role="tabpanel" aria-labelledby="deviceTab" tabindex="0" hidden>
+          <div class="section-heading"><div><p class="eyebrow">BAĞLANTI BİLGİLERİ</p><h2>Ev ekranınız</h2></div><svg class="icon section-icon"><use href="#icon-device"/></svg></div>
+          <p class="section-description">Sunucunun bildirdiği ESP32 bağlantıları ve veri akışı.</p>
+          <dl class="device-details"><div><dt>Sunucu bağlantısı</dt><dd id="deviceServer">Bağlantı kuruluyor</dd></div><div><dt>Bağlı ESP32</dt><dd id="deviceConnections">Bekleniyor</dd></div><div><dt>Son veri alımı</dt><dd id="deviceSync">Henüz veri alınmadı</dd></div><div><dt>TFT çözünürlüğü</dt><dd>320 × 240 px</dd></div><div><dt>Aktarım</dt><dd>WebSocket</dd></div></dl>
+          <p class="helper">Son veri alımı tarayıcıya ulaşan güncellemeyi gösterir. Cihazdan teslim onayı, IP, Wi-Fi gücü ve firmware bilgisi bu bağlantıda sunulmuyor.</p>
+        </section>
+      </div>
+      <aside class="preview-panel" aria-label="ESP32 ekran önizlemesi">
+        <div class="preview-heading"><span class="eyebrow">CANLI EKRAN</span><span id="previewLive" class="live-state">Bağlanıyor</span></div>
+        <div class="tft-frame"><div class="tft-screen"><div class="tft-topbar"><span id="previewTitle">SHOPPING LIST</span><span id="itemCount">0</span></div><ol id="shoppingPreview" class="shopping-preview"><li class="empty">Liste boş</li></ol><div id="spotifyPreview" class="spotify-preview" hidden><img id="spotifyPreviewArt" alt="" hidden /><p id="spotifyTrack" class="track">Spotify kapalı</p><p id="spotifyArtist" class="artist">Hesabınızı bağlayın</p><p id="spotifyAlbum" class="album"></p></div><div id="weatherPreview" class="weather-preview" hidden><div class="weather-current"><span id="weatherIcon" class="weather-icon">—</span><div><p id="weatherTemp" class="weather-temp">—</p><p id="weatherLabel" class="weather-label">Hava bilgisi bekleniyor</p></div></div><div id="weatherForecast" class="weather-forecast"></div></div></div></div>
+        <div class="preview-meta"><span>ESP32 · TFT</span><span>320 × 240</span></div><p class="preview-note">Seçili içeriğin önizlemesi. Paylaşılan veriden oluşturulur; fiziksel ekranın piksel görüntüsü değildir.</p><p id="previewUpdated" class="caption">Henüz veri alınmadı</p>
+      </aside>
+    </div>
+    <footer class="page-footer"><span>HomeFlow</span><span>Evinizin küçük ekranı, günlük hayatın bir parçası.</span></footer>
+  </main>
+  <dialog id="clearDialog" aria-labelledby="clearDialogTitle" aria-describedby="clearDialogDescription"><div class="dialog-content"><svg class="icon dialog-icon"><use href="#icon-trash"/></svg><h2 id="clearDialogTitle">Liste temizlensin mi?</h2><p id="clearDialogDescription">Listedeki tüm ürünler kaldırılır. Bu işlem geri alınamaz.</p><div class="dialog-actions"><button id="cancelClear" class="secondary-button" type="button" autofocus>Vazgeç</button><button id="confirmClear" class="danger-button" type="button">Listeyi temizle</button></div></div></dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script src="script.js"></script>
+</body>
 </html>
