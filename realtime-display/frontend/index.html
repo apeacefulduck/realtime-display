@@ -31,21 +31,31 @@
       <div class="connection"><p id="connectionStatus" class="status connecting" role="status">Bağlantı kuruluyor</p><p id="lastSync" class="caption">Henüz veri alınmadı</p></div>
     </header>
     <nav class="tabs" role="tablist" aria-label="Kontrol alanları">
-      <button id="shoppingTab" class="tab active" role="tab" aria-selected="true" aria-controls="shoppingControls" type="button"><svg class="icon"><use href="#icon-list"/></svg>Alışveriş</button>
+      <button id="notesTab" class="tab active" role="tab" aria-selected="true" aria-controls="notesControls" type="button"><svg class="icon"><use href="#icon-list"/></svg>Notlar</button>
       <button id="spotifyTab" class="tab" role="tab" aria-selected="false" aria-controls="spotifyControls" tabindex="-1" type="button"><svg class="icon"><use href="#icon-music"/></svg>Spotify</button>
       <button id="weatherTab" class="tab" role="tab" aria-selected="false" aria-controls="weatherControls" tabindex="-1" type="button"><svg class="icon"><use href="#icon-weather"/></svg>Hava</button>
       <button id="deviceTab" class="tab" role="tab" aria-selected="false" aria-controls="deviceControls" tabindex="-1" type="button"><svg class="icon"><use href="#icon-device"/></svg>Cihaz</button>
     </nav>
-    <div id="connectionNotice" class="connection-notice" role="status">Sunucuya bağlanılıyor. Listeniz bu tarayıcıda saklanır.</div>
+    <div id="connectionNotice" class="connection-notice" role="status">Sunucuya bağlanılıyor. Notlarınız ortak sunucudan yüklenir.</div>
     <div class="dashboard">
       <div class="control-area">
-        <section id="shoppingControls" class="controls" role="tabpanel" aria-labelledby="shoppingTab" tabindex="0">
-          <div class="section-heading"><div><p class="eyebrow">EVİNİZ İÇİN</p><h2>Alışveriş listesi</h2></div><span id="shoppingCount" class="count">0 ürün</span></div>
-          <p class="section-description">Aklınızdakileri listeye ekleyin, ev ekranınızda takip edin.</p>
-          <div class="list-surface"><ul id="shoppingList" class="shopping-list"></ul></div>
-          <div class="composer"><label class="sr-only" for="itemInput">Eklenecek ürün</label><input id="itemInput" type="text" maxlength="32" placeholder="Ürün ekle…" autocomplete="off" /><button id="sendButton" class="primary-button" type="button"><svg class="icon"><use href="#icon-plus"/></svg>Ekle</button></div>
-          <div class="list-footer"><p id="shoppingSync" class="caption" role="status">Liste yükleniyor</p><button id="clearButton" class="text-button danger" type="button"><svg class="icon"><use href="#icon-trash"/></svg>Listeyi temizle</button></div>
-          <p class="helper">Eklemenizi Enter ile tamamlayabilirsiniz. Ekranda son 8 ürün tutulur.</p>
+        <section id="notesControls" class="controls" role="tabpanel" aria-labelledby="notesTab" tabindex="0">
+          <div id="notesOverview">
+            <div class="section-heading"><div><p class="eyebrow">AKLINIZDAKİ HER ŞEY</p><h2>Notlar</h2></div><button id="newNote" class="primary-button" type="button"><svg class="icon"><use href="#icon-plus"/></svg>Yeni Başlık</button></div>
+            <p class="section-description">Kendi başlıklarınızı oluşturun. Maddeleri buradan veya ev ekranınızdan takip edin.</p>
+            <div id="notesGroups" class="notes-groups" aria-label="Not başlıkları"></div>
+          </div>
+          <div id="noteDetail" hidden>
+            <button id="notesBack" class="text-button notes-back" type="button">← Notlar</button>
+            <div class="section-heading"><div class="note-heading"><p class="eyebrow">CHECKLIST</p><h2 id="noteTitle"></h2></div><button id="renameNote" class="secondary-button" type="button">Başlığı düzenle</button></div>
+            <p id="noteProgress" class="section-description"></p>
+            <div class="list-surface"><ul id="noteItems" class="note-items" aria-label="Not maddeleri"></ul></div>
+            <form id="itemComposer" class="composer"><label class="sr-only" for="itemInput">Yeni madde</label><input id="itemInput" type="text" maxlength="2000" placeholder="Yeni madde yazın…" autocomplete="off" required /><button id="sendButton" class="primary-button" type="submit"><svg class="icon"><use href="#icon-plus"/></svg>Ekle</button></form>
+            <p class="helper">Sıralamak için madde tutamacını sürükleyin veya ok düğmelerini kullanın.</p>
+          </div>
+          <p id="notesSync" class="caption notes-sync" role="status">Notlar yükleniyor…</p>
+          <p id="notesFeedback" class="inline-feedback" role="status" hidden></p>
+          <button id="retryNotes" class="secondary-button" type="button" hidden>Tekrar dene</button>
         </section>
         <section id="spotifyControls" class="controls" role="tabpanel" aria-labelledby="spotifyTab" tabindex="0" hidden>
           <div class="section-heading"><div><p class="eyebrow">EVİN RİTMİ</p><h2>Spotify</h2></div><span id="spotifyPlayback" class="count">Kapalı</span></div>
@@ -71,14 +81,16 @@
       </div>
       <aside class="preview-panel" aria-label="ESP32 ekran önizlemesi">
         <div class="preview-heading"><span class="eyebrow">CANLI EKRAN</span><span id="previewLive" class="live-state">Bağlanıyor</span></div>
-        <div class="tft-frame"><div class="tft-screen"><div class="tft-topbar"><span id="previewTitle">SHOPPING LIST</span><span id="itemCount">0</span></div><ol id="shoppingPreview" class="shopping-preview"><li class="empty">Liste boş</li></ol><div id="spotifyPreview" class="spotify-preview" hidden><img id="spotifyPreviewArt" alt="" hidden /><p id="spotifyTrack" class="track">Spotify kapalı</p><p id="spotifyArtist" class="artist">Hesabınızı bağlayın</p><p id="spotifyAlbum" class="album"></p></div><div id="weatherPreview" class="weather-preview" hidden><div class="weather-current"><span id="weatherIcon" class="weather-icon">—</span><div><p id="weatherTemp" class="weather-temp">—</p><p id="weatherLabel" class="weather-label">Hava bilgisi bekleniyor</p></div></div><div id="weatherForecast" class="weather-forecast"></div></div></div></div>
+        <div class="tft-frame"><div class="tft-screen"><div class="tft-topbar"><span id="previewTitle">NOTLAR</span><span id="itemCount">0</span></div><ol id="notesPreview" class="notes-preview"><li class="empty">Liste boş</li></ol><div id="spotifyPreview" class="spotify-preview" hidden><img id="spotifyPreviewArt" alt="" hidden /><p id="spotifyTrack" class="track">Spotify kapalı</p><p id="spotifyArtist" class="artist">Hesabınızı bağlayın</p><p id="spotifyAlbum" class="album"></p></div><div id="weatherPreview" class="weather-preview" hidden><div class="weather-current"><span id="weatherIcon" class="weather-icon">—</span><div><p id="weatherTemp" class="weather-temp">—</p><p id="weatherLabel" class="weather-label">Hava bilgisi bekleniyor</p></div></div><div id="weatherForecast" class="weather-forecast"></div></div></div></div>
         <div class="preview-meta"><span>ESP32 · TFT</span><span>320 × 240</span></div><p class="preview-note">Seçili içeriğin önizlemesi. Paylaşılan veriden oluşturulur; fiziksel ekranın piksel görüntüsü değildir.</p><p id="previewUpdated" class="caption">Henüz veri alınmadı</p>
       </aside>
     </div>
     <footer class="page-footer"><span>HomeFlow</span><span>Evinizin küçük ekranı, günlük hayatın bir parçası.</span></footer>
   </main>
-  <dialog id="clearDialog" aria-labelledby="clearDialogTitle" aria-describedby="clearDialogDescription"><div class="dialog-content"><svg class="icon dialog-icon"><use href="#icon-trash"/></svg><h2 id="clearDialogTitle">Liste temizlensin mi?</h2><p id="clearDialogDescription">Listedeki tüm ürünler kaldırılır. Bu işlem geri alınamaz.</p><div class="dialog-actions"><button id="cancelClear" class="secondary-button" type="button" autofocus>Vazgeç</button><button id="confirmClear" class="danger-button" type="button">Listeyi temizle</button></div></div></dialog>
+  <dialog id="noteEditor" aria-labelledby="noteEditorTitle"><form id="noteEditorForm" class="dialog-content"><h2 id="noteEditorTitle">Yeni Başlık</h2><label id="editorLabel" for="noteEditorInput">Başlık adı</label><input id="noteEditorInput" type="text" maxlength="240" autocomplete="off" required /><p id="editorError" class="inline-feedback error" role="alert" hidden></p><div class="dialog-actions"><button id="cancelEditor" class="secondary-button" type="button">Vazgeç</button><button id="saveEditor" class="primary-button" type="submit">Kaydet</button></div></form></dialog>
+  <dialog id="noteDeleteDialog" aria-labelledby="noteDeleteTitle"><div class="dialog-content"><h2 id="noteDeleteTitle">Başlık silinsin mi?</h2><p id="noteDeleteDescription"></p><div class="dialog-actions"><button id="cancelNoteDelete" class="secondary-button" type="button" autofocus>Vazgeç</button><button id="confirmNoteDelete" class="danger-button" type="button">Başlığı sil</button></div></div></dialog>
   <div id="toast" class="toast" role="status" hidden></div>
+  <script src="notes.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

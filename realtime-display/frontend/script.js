@@ -1,18 +1,17 @@
 const socketUrl = "wss://realtime-display.onrender.com/ws?role=browser";
 const itemInput = document.querySelector("#itemInput");
 const sendButton = document.querySelector("#sendButton");
-const clearButton = document.querySelector("#clearButton");
 const connectionStatus = document.querySelector("#connectionStatus");
-const shoppingPreview = document.querySelector("#shoppingPreview");
+const notesPreview = document.querySelector("#notesPreview");
 const spotifyPreview = document.querySelector("#spotifyPreview");
 const spotifyTrack = document.querySelector("#spotifyTrack");
 const spotifyArtist = document.querySelector("#spotifyArtist");
 const spotifyAlbum = document.querySelector("#spotifyAlbum");
 const itemCount = document.querySelector("#itemCount");
 const previewTitle = document.querySelector("#previewTitle");
-const shoppingTab = document.querySelector("#shoppingTab");
+const notesTab = document.querySelector("#notesTab");
 const spotifyTab = document.querySelector("#spotifyTab");
-const shoppingControls = document.querySelector("#shoppingControls");
+const notesControls = document.querySelector("#notesControls");
 const spotifyControls = document.querySelector("#spotifyControls");
 const spotifySwitch = document.querySelector("#spotifySwitch");
 const refreshSpotifyButton = document.querySelector("#refreshSpotifyButton");
@@ -32,22 +31,17 @@ let socket;
 let reconnectTimer;
 let spotifyTimer;
 let weatherTimer;
-let activePanel = "shopping";
-let previewPanel = "shopping";
+let activePanel = "notes";
+let previewPanel = "notes";
 let lastDataAt = 0;
-let lastShoppingAt = 0;
-let lastSentAt = 0;
-let listPending = false;
 let connectionAttempted = false;
 let toastTimer;
 let spotifyLoading = false;
 let weatherLoading = false;
 const deviceTab = document.querySelector("#deviceTab");
 const deviceControls = document.querySelector("#deviceControls");
-const shoppingList = document.querySelector("#shoppingList");
-const clearDialog = document.querySelector("#clearDialog");
-const panels = {shopping: shoppingControls, spotify: spotifyControls, weather: weatherControls, device: deviceControls};
-const tabs = {shopping: shoppingTab, spotify: spotifyTab, weather: weatherTab, device: deviceTab};
+const panels = {notes: notesControls, spotify: spotifyControls, weather: weatherControls, device: deviceControls};
+const tabs = {notes: notesTab, spotify: spotifyTab, weather: weatherTab, device: deviceTab};
 const ui = id => document.querySelector(`#${id}`);
 function notify(message) {
   ui("toast").textContent = message;
@@ -71,11 +65,9 @@ function updateSyncLabels() {
   ui("lastSync").textContent = label;
   ui("previewUpdated").textContent = label;
   ui("deviceSync").textContent = relativeTime(lastDataAt);
-  ui("shoppingSync").textContent = listPending ? "Bağlantı bekleniyor · tarayıcıda saklandı" : lastSentAt > lastShoppingAt ? `Gönderildi · ${relativeTime(lastSentAt)}` : lastShoppingAt ? `Sunucudan alındı · ${relativeTime(lastShoppingAt)}` : hasShoppingSnapshot ? "Tarayıcıda saklanan liste" : "Sunucudan liste bekleniyor";
 }
 function received(kind) {
   lastDataAt = Date.now();
-  if (kind === "display") lastShoppingAt = lastDataAt;
   updateSyncLabels();
 }
 const STORAGE_PREFIX = "homeflow:";
@@ -86,9 +78,6 @@ function loadSaved(name, fallback) {
 function save(name, value) {
   try { localStorage.setItem(STORAGE_PREFIX + name, JSON.stringify(value)); } catch { /* Storage may be disabled. */ }
 }
-const savedItems = loadSaved("shopping", null);
-let hasShoppingSnapshot = Array.isArray(savedItems);
-const shoppingItems = hasShoppingSnapshot ? savedItems.filter(item => typeof item === "string").slice(-8) : [];
 let spotifySession = loadSaved("spotifySession", "");
 let deviceCount = 0;
 let heartbeatTimer;
@@ -105,7 +94,6 @@ spotifySwitch.checked = loadSaved("spotifyEnabled", Boolean(spotifySession));
 weatherSwitch.checked = loadSaved("weatherEnabled", false);
 weatherLat.value = loadSaved("weatherLat", "41.0082");
 weatherLon.value = loadSaved("weatherLon", "28.9784");
-const maxItems = 8;
 const apiBaseUrl = "https://realtime-display.onrender.com";
 
 function setConnectionState(isConnected) {
@@ -116,11 +104,10 @@ function setConnectionState(isConnected) {
   ui("deviceServer").textContent = isConnected ? "Bağlı" : connectionAttempted ? "Yeniden bağlanılıyor" : "Bağlantı kuruluyor";
   ui("deviceConnections").textContent = isConnected ? String(deviceCount) : "Bilinmiyor";
   ui("connectionNotice").hidden = isConnected && deviceCount > 0;
-  ui("connectionNotice").textContent = isConnected ? "Sunucuya bağlısınız. ESP32 bağlantısı bekleniyor." : "Sunucuya bağlanılıyor. Listeniz bu tarayıcıda saklanır; bağlantı geri geldiğinde gönderilir.";
+  ui("connectionNotice").textContent = isConnected ? "Sunucuya bağlısınız. ESP32 bağlantısı bekleniyor." : "Sunucuya bağlanılıyor. Notlarınızı kaydetmek için sunucu bağlantısı gerekir.";
   ui("previewLive").textContent = isConnected && deviceCount > 0 ? "Canlı veri" : isConnected ? "Cihaz bekleniyor" : "Bağlantı bekleniyor";
   ui("previewLive").classList.toggle("online", isConnected && deviceCount > 0);
   sendButton.disabled = false;
-  clearButton.disabled = shoppingItems.length === 0;
   spotifySwitch.disabled = false;
   refreshSpotifyButton.disabled = !isConnected || spotifyLoading;
   weatherSwitch.disabled = false;
@@ -138,58 +125,12 @@ function setActivePanel(panel) {
     panels[name].hidden = !selected;
   }
   if (panel !== "device") previewPanel = panel;
-  shoppingPreview.hidden = previewPanel !== "shopping";
+  notesPreview.hidden = previewPanel !== "notes";
   spotifyPreview.hidden = previewPanel !== "spotify";
   weatherPreview.hidden = previewPanel !== "weather";
-  previewTitle.textContent = previewPanel === "weather" ? "WEATHER" : previewPanel === "spotify" ? "SPOTIFY" : "SHOPPING LIST";
-  itemCount.textContent = previewPanel === "weather" ? (weatherSwitch.checked ? "ON" : "OFF") : previewPanel === "spotify" ? (spotifySwitch.checked ? "ON" : "OFF") : String(shoppingItems.length);
-}
-
-function renderShoppingList() {
-  shoppingPreview.replaceChildren();
-  shoppingList.replaceChildren();
-  ui("shoppingCount").textContent = `${shoppingItems.length} ürün`;
-  clearButton.disabled = shoppingItems.length === 0;
-  if (previewPanel === "shopping") itemCount.textContent = String(shoppingItems.length);
-  if (shoppingItems.length === 0) {
-    const empty = document.createElement("li");
-    empty.className = "empty";
-    empty.textContent = "Liste boş";
-    shoppingPreview.appendChild(empty);
-    const state = document.createElement("li");
-    state.className = "empty-state";
-    state.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#icon-list"/></svg><strong>Listeniz yeni fikirlere hazır.</strong><p>İlk ürünü aşağıdaki alandan ekleyin.</p>';
-    shoppingList.appendChild(state);
-  }
-  shoppingItems.forEach((item, index) => {
-    const previewItem = document.createElement("li");
-    previewItem.textContent = item;
-    shoppingPreview.appendChild(previewItem);
-    const row = document.createElement("li");
-    row.className = "shopping-row";
-    const number = document.createElement("span");
-    number.className = "row-number";
-    number.textContent = String(index + 1).padStart(2, "0");
-    const name = document.createElement("span");
-    name.className = "row-name";
-    name.textContent = item;
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "delete-item";
-    remove.setAttribute("aria-label", `${item} ürününü sil`);
-    remove.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#icon-trash"/></svg>';
-    remove.addEventListener("click", () => {
-      shoppingItems.splice(index, 1);
-      renderShoppingList();
-      sendShoppingList();
-      notify("Ürün listeden kaldırıldı.");
-      const next = shoppingList.querySelectorAll(".delete-item");
-      (next[Math.min(index, next.length - 1)] || itemInput).focus();
-    });
-    row.append(number, name, remove);
-    shoppingList.appendChild(row);
-  });
-  updateSyncLabels();
+  previewTitle.textContent = previewPanel === "weather" ? "WEATHER" : previewPanel === "spotify" ? "SPOTIFY" : "NOTLAR";
+  itemCount.textContent = previewPanel === "weather" ? (weatherSwitch.checked ? "ON" : "OFF") : previewPanel === "spotify" ? (spotifySwitch.checked ? "ON" : "OFF") : String(noteGroups.length);
+  if (previewPanel === "notes") renderNotesPreview();
 }
 
 function sendSocketPayload(payload) {
@@ -200,16 +141,6 @@ function sendSocketPayload(payload) {
 
   socket.send(JSON.stringify(payload));
   return true;
-}
-
-function getDisplayText() {
-  if (shoppingItems.length === 0) {
-    return "";
-  }
-
-  return `ALISVERIS LISTESI\n${shoppingItems
-    .map((item, index) => `${index + 1}. ${item}`)
-    .join("\n")}`;
 }
 
 function connectSocket() {
@@ -223,7 +154,7 @@ function connectSocket() {
     setConnectionState(true);
     for (const payload of pendingPayloads.values()) sendSocketPayload(payload);
     pendingPayloads.clear();
-    if (hasShoppingSnapshot) sendShoppingList();
+    refreshNotes();
     if (spotifySwitch.checked) setSpotifyPolling(true);
     if (weatherSwitch.checked) setWeatherPolling(true);
     window.clearInterval(heartbeatTimer);
@@ -240,15 +171,9 @@ function connectSocket() {
     if (data.type === "status") {
       deviceCount = Number(data.devices) || 0;
       setConnectionState(connection.readyState === WebSocket.OPEN);
-    } else if (data.type === "display") {
-      listPending = false;
-      received("display");
-      const lines = String(data.text || "").split("\n");
-      if (lines[0] === "ALISVERIS LISTESI") lines.shift();
-      shoppingItems.splice(0, shoppingItems.length, ...lines.filter(Boolean).map(line => line.replace(/^\d+\.\s*/, "")).slice(-maxItems));
-      hasShoppingSnapshot = true;
-      save("shopping", shoppingItems);
-      renderShoppingList();
+    } else if (data.type === "notes_changed") {
+      received("notes");
+      refreshNotes();
     } else if (data.type === "weather") {
       received("weather");
       weatherSwitch.checked = Boolean(data.enabled);
@@ -270,22 +195,6 @@ function connectSocket() {
     reconnectTimer = window.setTimeout(connectSocket, 1500);
   });
   connection.addEventListener("error", () => connection.close());
-}
-
-function sendShoppingList() {
-  listPending = true;
-  updateSyncLabels();
-  hasShoppingSnapshot = true;
-  save("shopping", shoppingItems);
-  const sent = sendSocketPayload({
-    type: "display",
-    text: getDisplayText(),
-    color: "white",
-    size: 3,
-  });
-  listPending = !sent;
-  if (sent) lastSentAt = Date.now();
-  updateSyncLabels();
 }
 
 function renderSpotify(data) {
@@ -523,38 +432,6 @@ async function setSpotifyPolling(enabled) {
   // Playback polling belongs to FastAPI; this tab can now be closed.
 }
 
-function addItemAndSend() {
-  const item = itemInput.value.trim();
-
-  if (!item) {
-    return;
-  }
-
-  const replacedOldest = shoppingItems.length >= maxItems;
-  if (replacedOldest) shoppingItems.shift();
-
-  shoppingItems.push(item.slice(0, 32));
-  itemInput.value = "";
-  renderShoppingList();
-  sendShoppingList();
-  notify(replacedOldest ? "Ürün eklendi; 8 ürün sınırı nedeniyle ilk ürün kaldırıldı." : "Ürün eklendi.");
-  itemInput.focus();
-}
-
-function clearShoppingList() {
-  shoppingItems.length = 0;
-  itemInput.value = "";
-  renderShoppingList();
-  sendShoppingList();
-  itemInput.focus();
-}
-
-sendButton.addEventListener("click", addItemAndSend);
-clearButton.addEventListener("click", () => clearDialog.showModal());
-ui("cancelClear").addEventListener("click", () => clearDialog.close());
-ui("confirmClear").addEventListener("click", () => {
-  clearDialog.close(); clearShoppingList(); notify("Liste temizlendi.");
-});
 deviceTab.addEventListener("click", () => setActivePanel("device"));
 Object.values(tabs).forEach((tab, index, all) => tab.addEventListener("keydown", event => {
   let next;
@@ -566,23 +443,16 @@ Object.values(tabs).forEach((tab, index, all) => tab.addEventListener("keydown",
   event.preventDefault();
   setActivePanel(Object.keys(tabs)[next]); all[next].focus();
 }));
-shoppingTab.addEventListener("click", () => setActivePanel("shopping"));
+notesTab.addEventListener("click", () => setActivePanel("notes"));
 spotifyTab.addEventListener("click", () => setActivePanel("spotify"));
 weatherTab.addEventListener("click", () => setActivePanel("weather"));
 spotifySwitch.addEventListener("change", () => setSpotifyPolling(spotifySwitch.checked));
 refreshSpotifyButton.addEventListener("click", sendSpotifyCurrent);
 weatherSwitch.addEventListener("change", () => setWeatherPolling(weatherSwitch.checked));
 refreshWeatherButton.addEventListener("click", sendWeatherCurrent);
-itemInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter" && !event.isComposing) {
-    event.preventDefault();
-    addItemAndSend();
-  }
-});
-
-renderShoppingList();
+initNotes();
 setConnectionState(false);
-setActivePanel("shopping");
+setActivePanel("notes");
 renderSpotify(null);
 renderWeather(null);
 window.setInterval(updateSyncLabels, 1000);
@@ -597,6 +467,7 @@ window.addEventListener("storage", event => {
 });
 window.addEventListener("focus", () => {
   if (!socket || socket.readyState === WebSocket.CLOSED) { window.clearTimeout(reconnectTimer); connectSocket(); }
+  refreshNotes();
   if (spotifySwitch.checked) sendSpotifyCurrent();
   if (weatherSwitch.checked) sendWeatherCurrent();
 });
