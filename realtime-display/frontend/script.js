@@ -40,8 +40,8 @@ let spotifyLoading = false;
 let weatherLoading = false;
 const deviceTab = document.querySelector("#deviceTab");
 const deviceControls = document.querySelector("#deviceControls");
-const panels = {notes: notesControls, spotify: spotifyControls, weather: weatherControls, device: deviceControls};
-const tabs = {notes: notesTab, spotify: spotifyTab, weather: weatherTab, device: deviceTab};
+const panels = {indoor: document.querySelector("#indoorControls"), notes: notesControls, spotify: spotifyControls, weather: weatherControls, device: deviceControls};
+const tabs = {indoor: document.querySelector("#indoorTab"), notes: notesTab, spotify: spotifyTab, weather: weatherTab, device: deviceTab};
 const ui = id => document.querySelector(`#${id}`);
 function notify(message) {
   ui("toast").textContent = message;
@@ -113,6 +113,7 @@ function setConnectionState(isConnected) {
   weatherSwitch.disabled = false;
   refreshWeatherButton.disabled = !isConnected || weatherLoading;
   updateSyncLabels();
+  if (!isConnected || deviceCount === 0) clearIndoor();
 }
 
 function setActivePanel(panel) {
@@ -125,11 +126,12 @@ function setActivePanel(panel) {
     panels[name].hidden = !selected;
   }
   if (panel !== "device") previewPanel = panel;
+  ui("indoorPreview").hidden = previewPanel !== "indoor";
   notesPreview.hidden = previewPanel !== "notes";
   spotifyPreview.hidden = previewPanel !== "spotify";
   weatherPreview.hidden = previewPanel !== "weather";
-  previewTitle.textContent = previewPanel === "weather" ? "WEATHER" : previewPanel === "spotify" ? "SPOTIFY" : "NOTLAR";
-  itemCount.textContent = previewPanel === "weather" ? (weatherSwitch.checked ? "ON" : "OFF") : previewPanel === "spotify" ? (spotifySwitch.checked ? "ON" : "OFF") : String(noteGroups.length);
+  previewTitle.textContent = previewPanel === "indoor" ? "EV" : previewPanel === "weather" ? "WEATHER" : previewPanel === "spotify" ? "SPOTIFY" : "NOTLAR";
+  itemCount.textContent = previewPanel === "indoor" ? "" : previewPanel === "weather" ? (weatherSwitch.checked ? "ON" : "OFF") : previewPanel === "spotify" ? (spotifySwitch.checked ? "ON" : "OFF") : String(noteGroups.length);
   if (previewPanel === "notes") renderNotesPreview();
 }
 
@@ -171,6 +173,9 @@ function connectSocket() {
     if (data.type === "status") {
       deviceCount = Number(data.devices) || 0;
       setConnectionState(connection.readyState === WebSocket.OPEN);
+    } else if (data.type === "indoor") {
+      received("indoor");
+      applyIndoor(data);
     } else if (data.type === "notes_changed") {
       received("notes");
       refreshNotes();
@@ -195,6 +200,50 @@ function connectSocket() {
     reconnectTimer = window.setTimeout(connectSocket, 1500);
   });
   connection.addEventListener("error", () => connection.close());
+}
+
+let indoorState = null;
+let indoorReceivedAt = 0;
+function clearIndoor() {
+  indoorState = null;
+  renderIndoor();
+}
+function applyIndoor(data) {
+  indoorState = data;
+  indoorReceivedAt = Date.now();
+  renderIndoor();
+}
+function renderIndoor() {
+  const updated = Date.parse(indoorState?.lastUpdated || "");
+  const valid = indoorState?.sensorAvailable === true &&
+    Number.isFinite(indoorState.temperature) && Number.isFinite(indoorState.humidity) &&
+    Number.isFinite(updated) && Date.now() - updated < indoorRules.staleAfterMs &&
+    Date.now() - indoorReceivedAt < indoorRules.staleAfterMs;
+  const temperature = valid ? `${indoorState.temperature.toFixed(1)} °C` : "--";
+  const humidity = valid ? `%${Number(indoorState.humidity.toFixed(1))} Nem` : "--";
+  const temperatureStatus = valid ? indoorState.temperatureStatus || "--" : "--";
+  const humidityStatus = valid ? indoorState.humidityStatus || "--" : "--";
+  for (const prefix of ["indoor", "indoorPreview"]) {
+    ui(prefix + "Temperature").textContent = temperature;
+    ui(prefix + "Humidity").textContent = humidity;
+    ui(prefix + "TemperatureStatus").textContent = temperatureStatus;
+    ui(prefix + "HumidityStatus").textContent = humidityStatus;
+  }
+  ui("indoorAvailability").textContent = valid ? `Son ölçüm: ${relativeTime(updated)}` : "Sensör verisi yok veya güncel değil.";
+}
+function initializeIndoorHelp() {
+  for (const metric of ["temperature", "humidity"]) {
+    const guide = ui(metric === "temperature" ? "indoorTemperatureGuide" : "indoorHumidityGuide");
+    for (const rule of indoorRules[metric]) {
+      const row = document.createElement("div");
+      const label = document.createElement("dt"), description = document.createElement("dd");
+      label.textContent = rule.label;
+      description.textContent = rule.description;
+      row.append(label, description); guide.append(row);
+    }
+  }
+  ui("indoorAbout").addEventListener("click", () => ui("indoorAboutDialog").showModal());
+  ui("indoorAboutClose").addEventListener("click", () => ui("indoorAboutDialog").close());
 }
 
 function renderSpotify(data) {
@@ -432,6 +481,7 @@ async function setSpotifyPolling(enabled) {
   // Playback polling belongs to FastAPI; this tab can now be closed.
 }
 
+tabs.indoor.addEventListener("click", () => setActivePanel("indoor"));
 deviceTab.addEventListener("click", () => setActivePanel("device"));
 Object.values(tabs).forEach((tab, index, all) => tab.addEventListener("keydown", event => {
   let next;
@@ -453,6 +503,9 @@ refreshWeatherButton.addEventListener("click", sendWeatherCurrent);
 initNotes();
 setConnectionState(false);
 setActivePanel("notes");
+initializeIndoorHelp();
+renderIndoor();
+window.setInterval(renderIndoor, 1000);
 renderSpotify(null);
 renderWeather(null);
 window.setInterval(updateSyncLabels, 1000);

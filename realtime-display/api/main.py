@@ -19,13 +19,17 @@ from spotify_auth import SpotifyAuthManager
 import logging
 from contextlib import asynccontextmanager
 import notes_api
+import indoor_sensor
 
 @asynccontextmanager
 async def lifespan(app):
     await player.start()
+    indoor_task = asyncio.create_task(expire_indoor_loop())
     try:
         yield
     finally:
+        indoor_task.cancel()
+        await asyncio.gather(indoor_task, return_exceptions=True)
         await player.stop()
 
 app = FastAPI(title="ESP32 Live Display", lifespan=lifespan)
@@ -158,7 +162,8 @@ class ConnectionManager:
     def __init__(self) -> None:
         self.active_connections: set[WebSocket] = set()
         self.roles: dict[WebSocket, str] = {}
-        self.latest: dict[str, str] = {}
+        self.latest: dict[str, str] = {"indoor": json.dumps(indoor_sensor.unavailable())}
+        self.indoor_received_at = 0.0
         self.lock = asyncio.Lock()
 
     async def connect(self, websocket: WebSocket) -> None:
@@ -166,6 +171,7 @@ class ConnectionManager:
         async with self.lock:
             self.active_connections.add(websocket)
             self.roles[websocket] = websocket.query_params.get("role", "unknown")
+            self.expire_indoor_state()
             for message in self.latest.values():
                 await websocket.send_text(message)
             await self.send_status()
@@ -173,6 +179,13 @@ class ConnectionManager:
     def disconnect(self, websocket: WebSocket) -> None:
         self.active_connections.discard(websocket)
         self.roles.pop(websocket, None)
+
+    def expire_indoor_state(self) -> bool:
+        state = json.loads(self.latest["indoor"])
+        if state["sensorAvailable"] and time.monotonic() - self.indoor_received_at >= indoor_sensor.STALE_SECONDS:
+            self.latest["indoor"] = json.dumps(indoor_sensor.unavailable(state["lastUpdated"]))
+            return True
+        return False
 
     async def send_status(self) -> None:
         status = json.dumps({"type": "status", "devices": sum(role == "device" for role in self.roles.values())})
@@ -188,18 +201,31 @@ class ConnectionManager:
         async with self.lock:
             payload = json.loads(message)
             kind = payload.get("type") if isinstance(payload, dict) else None
-            if kind in {"weather", "spotify"}:
+            if kind in {"weather", "spotify", "indoor"}:
                 self.latest[kind] = message
-            for connection in tuple(self.active_connections):
-                if connection is sender:
-                    continue
-                try:
-                    await connection.send_text(message)
-                except Exception:
-                    self.disconnect(connection)
+            if kind == "indoor" and payload.get("sensorAvailable"):
+                self.indoor_received_at = time.monotonic()
+            await self._send_connections(message, sender)
+
+    async def _send_connections(self, message, sender):
+        for connection in tuple(self.active_connections):
+            if connection is sender:
+                continue
+            try:
+                await connection.send_text(message)
+            except Exception:
+                self.disconnect(connection)
 
 
 manager = ConnectionManager()
+
+async def expire_indoor_loop():
+    while True:
+        await asyncio.sleep(1)
+        async with manager.lock:
+            if manager.expire_indoor_state():
+                await manager._send_connections(manager.latest["indoor"], sender=None)
+
 
 
 async def publish_spotify(state):
@@ -468,6 +494,12 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             payload = json.loads(message)
             if isinstance(payload, dict) and payload.get("type") == "ping":
                 await websocket.send_json({"type": "pong"})
+            elif isinstance(payload, dict) and payload.get("type") == "indoor":
+                if manager.roles.get(websocket) != "device" or not device_can_control(websocket):
+                    await websocket.send_json({"type": "indoor_error", "error": "device_not_paired"})
+                    continue
+                state = indoor_sensor.normalize(payload)
+                await manager.broadcast(json.dumps(state, ensure_ascii=False), sender=websocket)
             elif isinstance(payload, dict) and payload.get("type") in {"notes_list", "notes_open", "notes_set"}:
                 await notes_api.handle_socket(websocket, payload)
             elif isinstance(payload, dict) and payload.get("type") in {"notes", "note_items", "notes_changed", "notes_result", "notes_error", "display"}:

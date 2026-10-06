@@ -31,6 +31,7 @@
       <div class="connection"><p id="connectionStatus" class="status connecting" role="status">Bağlantı kuruluyor</p><p id="lastSync" class="caption">Henüz veri alınmadı</p></div>
     </header>
     <nav class="tabs" role="tablist" aria-label="Kontrol alanları">
+      <button id="indoorTab" class="tab" role="tab" aria-selected="false" aria-controls="indoorControls" tabindex="-1" type="button"><svg class="icon"><use href="#icon-home"/></svg>Ev</button>
       <button id="notesTab" class="tab active" role="tab" aria-selected="true" aria-controls="notesControls" type="button"><svg class="icon"><use href="#icon-list"/></svg>Notlar</button>
       <button id="spotifyTab" class="tab" role="tab" aria-selected="false" aria-controls="spotifyControls" tabindex="-1" type="button"><svg class="icon"><use href="#icon-music"/></svg>Spotify</button>
       <button id="weatherTab" class="tab" role="tab" aria-selected="false" aria-controls="weatherControls" tabindex="-1" type="button"><svg class="icon"><use href="#icon-weather"/></svg>Hava</button>
@@ -39,6 +40,15 @@
     <div id="connectionNotice" class="connection-notice" role="status">Sunucuya bağlanılıyor. Notlarınız ortak sunucudan yüklenir.</div>
     <div class="dashboard">
       <div class="control-area">
+        <section id="indoorControls" class="controls" role="tabpanel" aria-labelledby="indoorTab" tabindex="0" hidden>
+          <div class="section-heading"><div><p class="eyebrow">EVİNİZDE ŞU AN</p><h2>Ev</h2></div><button id="indoorAbout" class="text-button" type="button" aria-haspopup="dialog">Etiketler hakkında</button></div>
+          <p class="section-description">Evinizin sıcaklığı ve nemi, bir bakışta.</p>
+          <dl class="indoor-readings">
+            <div><dt>Sıcaklık</dt><dd><span id="indoorTemperature" class="indoor-value">--</span><span id="indoorTemperatureStatus" class="indoor-label">--</span></dd></div>
+            <div><dt>Nem</dt><dd><span id="indoorHumidity" class="indoor-value">--</span><span id="indoorHumidityStatus" class="indoor-label">--</span></dd></div>
+          </dl>
+          <p id="indoorAvailability" class="caption" role="status">Sensör verisi bekleniyor.</p>
+        </section>
         <section id="notesControls" class="controls" role="tabpanel" aria-labelledby="notesTab" tabindex="0">
           <div id="notesOverview">
             <div class="section-heading"><div><p class="eyebrow">AKLINIZDAKİ HER ŞEY</p><h2>Notlar</h2></div><button id="newNote" class="primary-button" type="button"><svg class="icon"><use href="#icon-plus"/></svg>Yeni Başlık</button></div>
@@ -81,16 +91,18 @@
       </div>
       <aside class="preview-panel" aria-label="ESP32 ekran önizlemesi">
         <div class="preview-heading"><span class="eyebrow">CANLI EKRAN</span><span id="previewLive" class="live-state">Bağlanıyor</span></div>
-        <div class="tft-frame"><div class="tft-screen"><div class="tft-topbar"><span id="previewTitle">NOTLAR</span><span id="itemCount">0</span></div><ol id="notesPreview" class="notes-preview"><li class="empty">Liste boş</li></ol><div id="spotifyPreview" class="spotify-preview" hidden><img id="spotifyPreviewArt" alt="" hidden /><p id="spotifyTrack" class="track">Spotify kapalı</p><p id="spotifyArtist" class="artist">Hesabınızı bağlayın</p><p id="spotifyAlbum" class="album"></p></div><div id="weatherPreview" class="weather-preview" hidden><div class="weather-current"><span id="weatherIcon" class="weather-icon">—</span><div><p id="weatherTemp" class="weather-temp">—</p><p id="weatherLabel" class="weather-label">Hava bilgisi bekleniyor</p></div></div><div id="weatherForecast" class="weather-forecast"></div></div></div></div>
+        <div class="tft-frame"><div class="tft-screen"><div class="tft-topbar"><span id="previewTitle">NOTLAR</span><span id="itemCount">0</span></div><div id="indoorPreview" class="indoor-preview" hidden><div><span>Sıcaklık</span><p id="indoorPreviewTemperature">--</p><small id="indoorPreviewTemperatureStatus">--</small></div><div><span>Nem</span><p id="indoorPreviewHumidity">--</p><small id="indoorPreviewHumidityStatus">--</small></div></div><ol id="notesPreview" class="notes-preview"><li class="empty">Liste boş</li></ol><div id="spotifyPreview" class="spotify-preview" hidden><img id="spotifyPreviewArt" alt="" hidden /><p id="spotifyTrack" class="track">Spotify kapalı</p><p id="spotifyArtist" class="artist">Hesabınızı bağlayın</p><p id="spotifyAlbum" class="album"></p></div><div id="weatherPreview" class="weather-preview" hidden><div class="weather-current"><span id="weatherIcon" class="weather-icon">—</span><div><p id="weatherTemp" class="weather-temp">—</p><p id="weatherLabel" class="weather-label">Hava bilgisi bekleniyor</p></div></div><div id="weatherForecast" class="weather-forecast"></div></div></div></div>
         <div class="preview-meta"><span>ESP32 · TFT</span><span>320 × 240</span></div><p class="preview-note">Seçili içeriğin önizlemesi. Paylaşılan veriden oluşturulur; fiziksel ekranın piksel görüntüsü değildir.</p><p id="previewUpdated" class="caption">Henüz veri alınmadı</p>
       </aside>
     </div>
     <footer class="page-footer"><span>HomeFlow</span><span>Evinizin küçük ekranı, günlük hayatın bir parçası.</span></footer>
   </main>
+  <dialog id="indoorAboutDialog" aria-labelledby="indoorAboutTitle"><div class="dialog-content"><h2 id="indoorAboutTitle">Etiketler hakkında</h2><h3>Sıcaklık</h3><dl id="indoorTemperatureGuide" class="indoor-guide"></dl><h3>Nem</h3><dl id="indoorHumidityGuide" class="indoor-guide"></dl><p>Bu etiketler ortam koşullarını hızlı yorumlamayı kolaylaştırmak için HomeFlow tarafından kullanılan kullanıcı arayüzü sınıflandırmalarıdır.</p><div class="dialog-actions"><button id="indoorAboutClose" class="secondary-button" type="button" autofocus>Kapat</button></div></div></dialog>
   <dialog id="noteEditor" aria-labelledby="noteEditorTitle"><form id="noteEditorForm" class="dialog-content"><h2 id="noteEditorTitle">Yeni Başlık</h2><label id="editorLabel" for="noteEditorInput">Başlık adı</label><input id="noteEditorInput" type="text" maxlength="240" autocomplete="off" required /><p id="editorError" class="inline-feedback error" role="alert" hidden></p><div class="dialog-actions"><button id="cancelEditor" class="secondary-button" type="button">Vazgeç</button><button id="saveEditor" class="primary-button" type="submit">Kaydet</button></div></form></dialog>
   <dialog id="noteDeleteDialog" aria-labelledby="noteDeleteTitle"><div class="dialog-content"><h2 id="noteDeleteTitle">Başlık silinsin mi?</h2><p id="noteDeleteDescription"></p><div class="dialog-actions"><button id="cancelNoteDelete" class="secondary-button" type="button" autofocus>Vazgeç</button><button id="confirmNoteDelete" class="danger-button" type="button">Başlığı sil</button></div></div></dialog>
   <div id="toast" class="toast" role="status" hidden></div>
   <script src="notes.js"></script>
+  <script src="indoor-rules.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

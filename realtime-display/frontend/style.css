@@ -179,6 +179,26 @@ dialog p { margin-top: 12px; color: var(--muted); }
 .drag-handle { cursor: grab; font-size: 20px; padding: 0 4px; }
 .notes-sync { margin-top: 18px; }
 #retryNotes { margin-top: 12px; }
+.indoor-readings { margin: 24px 0 20px; }
+.indoor-readings > div { border-bottom: 1px solid var(--border); padding: 18px 0 22px; }
+.indoor-readings dt { color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+.indoor-readings dd { margin: 0; display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.indoor-value { font-size: clamp(28px, 4vw, 36px); font-weight: 600; letter-spacing: -.7px; font-variant-numeric: tabular-nums; }
+.indoor-label { color: var(--accent); font-size: 14px; }
+#indoorAbout { color: var(--muted); background: transparent; border: 0; padding: 8px 0 8px 12px; font-size: 12px; }
+#indoorAbout:hover { color: var(--accent); }
+.indoor-preview { padding: 14px 0; }
+.indoor-preview > div + div { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.indoor-preview span { display: block; color: var(--muted); font-size: 11px; }
+.indoor-preview p { display: inline-block; font-size: 23px; margin-top: 4px; }
+.indoor-preview small { color: var(--accent); float: right; margin-top: 14px; }
+#indoorAboutDialog { max-height: calc(100dvh - 32px); overflow-y: auto; }
+#indoorAboutDialog h3 { font-size: 15px; margin-top: 20px; }
+.indoor-guide { font-size: 12px; margin: 8px 0 0; }
+.indoor-guide div { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 5px 0; border-bottom: 1px solid var(--border); }
+.indoor-guide dd { margin: 0; color: var(--muted); }
+#indoorAboutDialog p { font-size: 12px; }
+@media (max-width: 480px) { #indoorControls .section-heading { gap: 8px; } .tabs { gap: 16px; } .dialog-content { padding: 22px; } }
 #noteEditorForm label { display: block; margin: 20px 0 8px; color: var(--muted); }
 .tft-topbar #previewTitle { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 85%; }
 .notes-preview { list-style: none; padding-left: 0; line-height: 30px; }
