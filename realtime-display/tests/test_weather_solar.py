@@ -14,6 +14,7 @@ def epoch(text):
 
 @pytest.fixture
 def provider(monkeypatch):
+    monkeypatch.setattr(main, 'weather_retry', main.WeatherRetry())
     start = epoch('2026-10-05T00:00:00+03:00')
     data = {'utc_offset_seconds': 10800, 'current': {'temperature_2m': 21, 'relative_humidity_2m': 45, 'weather_code': 0, 'wind_speed_10m': 7}, 'daily': {
         'time': [start, start+86400],

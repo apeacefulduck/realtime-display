@@ -16,6 +16,7 @@ def isolated(monkeypatch):
     monkeypatch.setattr(main, 'weather_enabled', True)
     monkeypatch.setattr(main, 'weather_location', (41.0082, 28.9784))
     monkeypatch.setattr(main, 'weather_revision', 0)
+    monkeypatch.setattr(main, 'weather_retry', main.WeatherRetry())
     monkeypatch.setattr(main, 'manager', main.ConnectionManager())
 
 def test_no_browser_initial_refresh_then_provider_retry(monkeypatch):

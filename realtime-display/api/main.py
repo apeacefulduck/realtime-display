@@ -22,6 +22,7 @@ import logging
 from contextlib import asynccontextmanager
 import notes_api
 import indoor_sensor
+from weather_retry import WeatherRetry
 
 @asynccontextmanager
 async def lifespan(app):
@@ -68,6 +69,7 @@ weather_refresh = asyncio.Event()
 weather_enabled = True
 weather_location = (41.0082, 28.9784)
 weather_revision = 0
+weather_retry = WeatherRetry()
 
 
 def weather_snapshot(data, *, failed=False):
@@ -98,11 +100,10 @@ async def refresh_weather_loop():
         try:
             data = await weather(*location)
             message = {**data, "enabled": True}
-            delay = 60 if data["stale"] else WEATHER_CACHE_TTL_SECONDS
-        except HTTPException:
-            logging.warning("Weather refresh failed; retry in 60s")
-            message = {"type": "weather_error", "error": "provider_unavailable", "retryAfter": 60}
-            delay = 60
+            delay = data.get("retryAfter", 60) if data["stale"] else WEATHER_CACHE_TTL_SECONDS
+        except HTTPException as exc:
+            delay = int((exc.headers or {}).get("Retry-After", 60))
+            message = {"type": "weather_error", "error": weather_retry.error, "retryAfter": delay}
         # A browser may have disabled weather or changed location during IO.
         if revision != weather_revision:
             weather_refresh.set()
@@ -435,10 +436,17 @@ async def weather(lat: float = 41.0082, lon: float = 28.9784) -> dict[str, Any]:
         try:
             return await fetch_weather(lat, lon)
         except (ValueError, TypeError, KeyError, AttributeError, OverflowError) as exc:
-            logging.warning("Weather provider invalid payload")
-            if weather_cache.get("location") == (lat, lon) and weather_cache["data"] is not None:
-                return weather_snapshot(weather_cache["data"], failed=True)
-            raise HTTPException(502, "Weather provider invalid response.") from exc
+            delay = weather_retry.fail()
+            logging.warning("Weather provider invalid payload; retry in %ss", delay)
+            return weather_failure(lat, lon)
+
+
+def weather_failure(lat, lon):
+    delay = max(1, weather_retry.remaining())
+    if weather_cache.get("location") == (lat, lon) and weather_cache["data"] is not None:
+        return {**weather_snapshot(weather_cache["data"], failed=True),
+                "retryAfter": delay, "providerError": weather_retry.error}
+    raise HTTPException(502, weather_retry.error, headers={"Retry-After": str(delay)})
 
 
 async def fetch_weather(lat: float, lon: float) -> dict[str, Any]:
@@ -454,6 +462,10 @@ async def fetch_weather(lat: float, lon: float) -> dict[str, Any]:
         and now - weather_cache["updated_at"] < WEATHER_CACHE_TTL_SECONDS
     ):
         return weather_snapshot(weather_cache["data"])
+
+    # Reconnects, coordinate changes and queued failures cannot bypass this gate.
+    if weather_retry.remaining():
+        return weather_failure(lat, lon)
 
     params = {
         "latitude": lat,
@@ -475,28 +487,24 @@ async def fetch_weather(lat: float, lon: float) -> dict[str, Any]:
         response.raise_for_status()
 
     except httpx.HTTPStatusError as exc:
-        logging.warning("Weather provider HTTP=%s", exc.response.status_code)
-        # Open-Meteo rate limit veya geçici hata verirse
-        # elimizde eski veri varsa onu kullan.
-        if same_location and weather_cache["data"] is not None:
-            logging.warning("Weather provider HTTP=%s; using dated cache", exc.response.status_code)
-            return weather_snapshot(weather_cache["data"], failed=True)
-
-        raise HTTPException(
-            status_code=502,
-            detail="Weather provider unavailable.",
-        ) from exc
+        status = exc.response.status_code
+        delay = weather_retry.fail(status, exc.response.headers.get("Retry-After"))
+        # Classify quota feedback without logging URLs, credentials or response bodies.
+        quota = "unspecified"
+        if status == 429:
+            try:
+                reason = str(exc.response.json().get("reason", "")).lower()
+                quota = next((label for label in ("daily", "hourly", "minutely")
+                              if label in reason), "unspecified")
+            except (ValueError, AttributeError):
+                pass
+        logging.warning("Weather provider HTTP=%s quota=%s; retry in %ss", status, quota, delay)
+        return weather_failure(lat, lon)
 
     except httpx.HTTPError as exc:
-        logging.warning("Weather provider transport=%s", type(exc).__name__)
-        if same_location and weather_cache["data"] is not None:
-            logging.warning("Weather provider transport failed; using dated cache")
-            return weather_snapshot(weather_cache["data"], failed=True)
-
-        raise HTTPException(
-            status_code=502,
-            detail="Weather provider unavailable.",
-        ) from exc
+        delay = weather_retry.fail()
+        logging.warning("Weather provider transport=%s; retry in %ss", type(exc).__name__, delay)
+        return weather_failure(lat, lon)
 
     payload = response.json()
     current = payload.get("current") or {}
@@ -585,6 +593,7 @@ async def fetch_weather(lat: float, lon: float) -> dict[str, Any]:
     weather_cache["data"] = result
     weather_cache["updated_at"] = now
     weather_cache["location"] = (lat, lon)
+    weather_retry.reset()
 
     return result
 

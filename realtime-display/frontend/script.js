@@ -185,7 +185,11 @@ function connectSocket() {
       save("weatherEnabled", weatherSwitch.checked);
       renderWeather(data.enabled ? data : null);
     } else if (data.type === "weather_error") {
-      feedback("weatherFeedback", "Hava sağlayıcısına erişilemiyor; otomatik tekrar denenecek.", true);
+      const minutes = Math.max(1, Math.ceil((Number(data.retryAfter) || 60) / 60));
+      const reason = data.error === "rate_limited"
+        ? "Hava sağlayıcısının istek sınırına ulaşıldı."
+        : "Hava sağlayıcısına erişilemiyor.";
+      feedback("weatherFeedback", `${reason} ${minutes} dakika sonra otomatik tekrar denenecek.`, true);
     } else if (data.type === "spotify") {
       received("spotify");
       // Display the shared device state without sharing the browser's OAuth credential.
