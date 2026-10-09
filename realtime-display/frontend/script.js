@@ -184,6 +184,8 @@ function connectSocket() {
       weatherSwitch.checked = Boolean(data.enabled);
       save("weatherEnabled", weatherSwitch.checked);
       renderWeather(data.enabled ? data : null);
+    } else if (data.type === "weather_error") {
+      feedback("weatherFeedback", "Hava sağlayıcısına erişilemiyor; otomatik tekrar denenecek.", true);
     } else if (data.type === "spotify") {
       received("spotify");
       // Display the shared device state without sharing the browser's OAuth credential.
@@ -360,7 +362,7 @@ function renderWeather(data) {
   setWeatherConditionClass(data.condition);
   weatherIcon.textContent = iconForCondition(data.condition);
   weatherTemp.textContent = `${data.temperature} °C`;
-  weatherLabel.textContent = `${data.label} · Nem ${data.humidity}% · Rüzgâr ${data.wind} km/sa`;
+  weatherLabel.textContent = `${data.stale ? "Eski veri · " : ""}${data.label} · Nem ${data.humidity}% · Rüzgâr ${data.wind} km/sa`;
   weatherForecast.innerHTML = "";
   weatherPreview.querySelectorAll(".weather-effect").forEach((effect) => effect.remove());
   weatherForecast.before(createWeatherEffect(data.condition));
@@ -408,7 +410,7 @@ async function sendWeatherCurrent() {
     if (!weatherSwitch.checked) return;
     renderWeather(data);
     received("weather");
-    feedback("weatherFeedback", "Hava bilgisi alındı; sunucuya gönderiliyor.");
+    feedback("weatherFeedback", data.stale ? "Eski hava verisi gösteriliyor; yenileme tekrar denenecek." : "Hava bilgisi alındı; sunucuya gönderiliyor.", Boolean(data.stale));
     sendSocketPayload({ ...data, enabled: true });
   } catch (error) {
     feedback("weatherFeedback", "Hava bilgisi yenilenemedi. Bağlantınızı kontrol edip tekrar deneyin.", true);
@@ -570,7 +572,7 @@ function renderWeatherCard(data) {
   const symbols = {clear: "weather-clear", partly_cloudy: "icon-weather", cloudy: "weather-cloudy", rain: "weather-rain", fog: "weather-fog", snow: "weather-snow", storm: "weather-storm"};
   ui("weatherControlIcon").innerHTML = symbols[condition] ? `<svg class="icon" aria-hidden="true"><use href="#${symbols[condition]}"/></svg>` : "—";
   ui("weatherControlTemp").textContent = available ? displayValue(data.temperature, " °C") : "—";
-  ui("weatherControlLabel").textContent = available ? data.label || "Durum bilgisi yok" : weatherSwitch.checked ? "Hava bilgisi bekleniyor." : "Ev ekranında göstermeyi açarak başlayın.";
+  ui("weatherControlLabel").textContent = available ? `${data.stale ? "Eski veri · " : ""}${data.label || "Durum bilgisi yok"}` : weatherSwitch.checked ? "Hava bilgisi bekleniyor." : "Ev ekranında göstermeyi açarak başlayın.";
   ui("weatherHumidity").textContent = available ? displayValue(data.humidity, "%") : "—";
   ui("weatherWind").textContent = available ? displayValue(data.wind, " km/sa") : "—";
   ui("weatherControlForecast").replaceChildren();

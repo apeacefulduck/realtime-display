@@ -1,7 +1,7 @@
 // Generated from api/indoor_rules.json.
 const indoorRules = {
-  "readIntervalMs": 3000,
-  "staleAfterMs": 12000,
+  "readIntervalMs": 4000,
+  "staleAfterMs": 360000,
   "temperature": [
     {
       "upper": 18,
@@ -65,5 +65,12 @@ const indoorRules = {
       "label": "Çok nemli",
       "description": "%70 üzeri"
     }
-  ]
+  ],
+  "aodDimReadIntervalMs": 10000,
+  "aodUltraReadIntervalMs": 25000,
+  "screenSleepReadIntervalMs": 300000,
+  "minReadIntervalMs": 2000,
+  "heartbeatIntervalMs": 300000,
+  "temperatureSendDelta": 0.5,
+  "humiditySendDelta": 2.0
 };

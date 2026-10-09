@@ -5,6 +5,8 @@ import asyncio
 import time
 import os
 import secrets
+import math
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlencode
@@ -25,9 +27,12 @@ import indoor_sensor
 async def lifespan(app):
     await player.start()
     indoor_task = asyncio.create_task(expire_indoor_loop())
+    weather_task = asyncio.create_task(refresh_weather_loop())
     try:
         yield
     finally:
+        weather_task.cancel()
+        await asyncio.gather(weather_task, return_exceptions=True)
         indoor_task.cancel()
         await asyncio.gather(indoor_task, return_exceptions=True)
         await player.stop()
@@ -57,6 +62,65 @@ weather_cache: dict[str, Any] = {
     "data": None,
     "updated_at": 0.0,
 }
+
+weather_lock = asyncio.Lock()
+weather_refresh = asyncio.Event()
+weather_enabled = True
+weather_location = (41.0082, 28.9784)
+weather_revision = 0
+
+
+def weather_snapshot(data, *, failed=False):
+    # Copy metadata; never move the successful measurement time on a failure.
+    age = max(0, int(time.time() - float(data.get("updatedAt", 0))))
+    return {**data, "ageSeconds": age,
+            "stale": failed or age >= WEATHER_CACHE_TTL_SECONDS}
+
+
+async def refresh_weather_loop():
+    delay = 0
+    while True:
+        if delay:
+            try:
+                await asyncio.wait_for(weather_refresh.wait(), timeout=delay)
+            except asyncio.TimeoutError:
+                pass
+        weather_refresh.clear()
+        revision = weather_revision
+        enabled, location = weather_enabled, weather_location
+        if not enabled:
+            delay = 60
+            continue
+        # No browser is needed. Request only while a client is interested.
+        if not manager.active_connections:
+            delay = 60
+            continue
+        try:
+            data = await weather(*location)
+            message = {**data, "enabled": True}
+            delay = 60 if data["stale"] else WEATHER_CACHE_TTL_SECONDS
+        except HTTPException:
+            logging.warning("Weather refresh failed; retry in 60s")
+            message = {"type": "weather_error", "error": "provider_unavailable", "retryAfter": 60}
+            delay = 60
+        # A browser may have disabled weather or changed location during IO.
+        if revision != weather_revision:
+            weather_refresh.set()
+            continue
+        await manager.broadcast(json.dumps(message, ensure_ascii=False), sender=None)
+
+
+def configure_weather(payload):
+    global weather_enabled, weather_location, weather_revision
+    enabled = bool(payload.get("enabled", True))
+    solar = payload.get("solar") or {}
+    lat = float(payload.get("latitude", solar.get("latitude", weather_location[0])))
+    lon = float(payload.get("longitude", solar.get("longitude", weather_location[1])))
+    if not math.isfinite(lat) or not math.isfinite(lon) or not -90 <= lat <= 90 or not -180 <= lon <= 180:
+        raise ValueError("invalid_coordinates")
+    weather_enabled, weather_location = enabled, (lat, lon)
+    weather_revision += 1
+    weather_refresh.set()
 
 def weather_label(code: int) -> tuple[str, str]:
     if code == 0:
@@ -173,8 +237,14 @@ class ConnectionManager:
             self.roles[websocket] = websocket.query_params.get("role", "unknown")
             self.expire_indoor_state()
             for message in self.latest.values():
+                cached = json.loads(message)
+                if cached.get("type") == "weather" and cached.get("enabled"):
+                    message = json.dumps(weather_snapshot(cached), ensure_ascii=False)
                 await websocket.send_text(message)
             await self.send_status()
+        if self.roles.get(websocket) == "device":
+            weather_refresh.set()
+
 
     def disconnect(self, websocket: WebSocket) -> None:
         self.active_connections.discard(websocket)
@@ -358,23 +428,40 @@ async def spotify_control(request: Request) -> dict[str, Any]:
 
 @app.get("/weather")
 async def weather(lat: float = 41.0082, lon: float = 28.9784) -> dict[str, Any]:
+    if not math.isfinite(lat) or not math.isfinite(lon) or not -90 <= lat <= 90 or not -180 <= lon <= 180:
+        raise HTTPException(400, "invalid_coordinates")
+    # One provider request at a time, rather than one TLS client per requester.
+    async with weather_lock:
+        try:
+            return await fetch_weather(lat, lon)
+        except (ValueError, TypeError, KeyError, AttributeError, OverflowError) as exc:
+            logging.warning("Weather provider invalid payload")
+            if weather_cache.get("location") == (lat, lon) and weather_cache["data"] is not None:
+                return weather_snapshot(weather_cache["data"], failed=True)
+            raise HTTPException(502, "Weather provider invalid response.") from exc
+
+
+async def fetch_weather(lat: float, lon: float) -> dict[str, Any]:
     import time
 
     now = time.time()
 
+    same_location = weather_cache.get("location") == (lat, lon)
+
     # Cache'de güncel veri varsa dış API'ye tekrar gitme.
     if (
-        weather_cache["data"] is not None
+        same_location and weather_cache["data"] is not None
         and now - weather_cache["updated_at"] < WEATHER_CACHE_TTL_SECONDS
     ):
-        return weather_cache["data"]
+        return weather_snapshot(weather_cache["data"])
 
     params = {
         "latitude": lat,
         "longitude": lon,
         "timezone": "auto",
+        "timeformat": "unixtime",
         "current": "temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m",
-        "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
+        "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset",
         "forecast_days": 7,
     }
 
@@ -388,10 +475,12 @@ async def weather(lat: float = 41.0082, lon: float = 28.9784) -> dict[str, Any]:
         response.raise_for_status()
 
     except httpx.HTTPStatusError as exc:
+        logging.warning("Weather provider HTTP=%s", exc.response.status_code)
         # Open-Meteo rate limit veya geçici hata verirse
         # elimizde eski veri varsa onu kullan.
-        if weather_cache["data"] is not None:
-            return weather_cache["data"]
+        if same_location and weather_cache["data"] is not None:
+            logging.warning("Weather provider HTTP=%s; using dated cache", exc.response.status_code)
+            return weather_snapshot(weather_cache["data"], failed=True)
 
         raise HTTPException(
             status_code=502,
@@ -399,8 +488,10 @@ async def weather(lat: float = 41.0082, lon: float = 28.9784) -> dict[str, Any]:
         ) from exc
 
     except httpx.HTTPError as exc:
-        if weather_cache["data"] is not None:
-            return weather_cache["data"]
+        logging.warning("Weather provider transport=%s", type(exc).__name__)
+        if same_location and weather_cache["data"] is not None:
+            logging.warning("Weather provider transport failed; using dated cache")
+            return weather_snapshot(weather_cache["data"], failed=True)
 
         raise HTTPException(
             status_code=502,
@@ -410,6 +501,9 @@ async def weather(lat: float = 41.0082, lon: float = 28.9784) -> dict[str, Any]:
     payload = response.json()
     current = payload.get("current") or {}
     daily = payload.get("daily") or {}
+    if not all(isinstance(current.get(field), (int, float)) and math.isfinite(current[field])
+               for field in ("temperature_2m", "relative_humidity_2m", "weather_code", "wind_speed_10m")):
+        raise ValueError("missing_current_metrics")
 
     condition, label = weather_label(
         int(current.get("weather_code", -1))
@@ -434,7 +528,7 @@ async def weather(lat: float = 41.0082, lon: float = 28.9784) -> dict[str, Any]:
 
         forecast.append(
             {
-                "day": short_day(str(date_text)),
+                "day": short_day(datetime.fromtimestamp(int(date_text) + int(payload.get("utc_offset_seconds", 0)), timezone.utc).strftime("%Y-%m-%d")),
                 "condition": day_condition,
                 "label": day_label,
                 "code": day_code,
@@ -459,7 +553,18 @@ async def weather(lat: float = 41.0082, lon: float = 28.9784) -> dict[str, Any]:
             }
         )
 
+    sunrises, sunsets = daily.get("sunrise", []), daily.get("sunset", [])
+    solar_days = [
+        {"start": int(start), "sunrise": int(rise), "sunset": int(setting)}
+        for start, rise, setting in zip(dates[:7], sunrises, sunsets)
+        if rise is not None and setting is not None and int(start) <= int(rise) < int(setting) < int(start) + 86400
+    ]
     result = {
+        "updatedAt": int(now),
+        "observedAt": current.get("time"),
+        "stale": False,
+        "ageSeconds": 0,
+        "solar": {"latitude": lat, "longitude": lon, "days": solar_days},
         "type": "weather",
         "location": "Istanbul",
         "temperature": round(
@@ -479,8 +584,10 @@ async def weather(lat: float = 41.0082, lon: float = 28.9784) -> dict[str, Any]:
     # Başarılı sonucu cache'e koy.
     weather_cache["data"] = result
     weather_cache["updated_at"] = now
+    weather_cache["location"] = (lat, lon)
 
     return result
+
 
 
 @app.websocket("/ws")
@@ -494,6 +601,22 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             payload = json.loads(message)
             if isinstance(payload, dict) and payload.get("type") == "ping":
                 await websocket.send_json({"type": "pong"})
+            elif isinstance(payload, dict) and payload.get("type") == "weather_request":
+                if weather_enabled:
+                    # Wake the single refresh task; provider IO never delays pong.
+                    weather_refresh.set()
+                else:
+                    await websocket.send_json({"type": "weather", "enabled": False})
+            elif isinstance(payload, dict) and payload.get("type") == "weather":
+                if manager.roles.get(websocket) != "browser":
+                    continue
+                try:
+                    configure_weather(payload)
+                except (ValueError, TypeError, AttributeError):
+                    await websocket.send_json({"type": "weather_error", "error": "invalid_coordinates"})
+                    continue
+                if not weather_enabled:
+                    await manager.broadcast(json.dumps({"type": "weather", "enabled": False}), sender=None)
             elif isinstance(payload, dict) and payload.get("type") == "indoor":
                 if manager.roles.get(websocket) != "device" or not device_can_control(websocket):
                     await websocket.send_json({"type": "indoor_error", "error": "device_not_paired"})
