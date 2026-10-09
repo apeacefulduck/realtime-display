@@ -185,11 +185,7 @@ function connectSocket() {
       save("weatherEnabled", weatherSwitch.checked);
       renderWeather(data.enabled ? data : null);
     } else if (data.type === "weather_error") {
-      const minutes = Math.max(1, Math.ceil((Number(data.retryAfter) || 60) / 60));
-      const reason = data.error === "rate_limited"
-        ? "Hava sağlayıcısının istek sınırına ulaşıldı."
-        : "Hava sağlayıcısına erişilemiyor.";
-      feedback("weatherFeedback", `${reason} ${minutes} dakika sonra otomatik tekrar denenecek.`, true);
+      showWeatherError(data);
     } else if (data.type === "spotify") {
       received("spotify");
       // Display the shared device state without sharing the browser's OAuth credential.
@@ -383,12 +379,23 @@ function renderWeather(data) {
   }
 }
 
+function showWeatherError(data) {
+      const minutes = Math.max(1, Math.ceil((Number(data.retryAfter) || 60) / 60));
+      const reason = data.error === "rate_limited"
+        ? "Hava sağlayıcısının istek sınırına ulaşıldı."
+        : "Hava sağlayıcısına erişilemiyor.";
+      feedback("weatherFeedback", `${reason} ${minutes} dakika sonra otomatik tekrar denenecek.`, true);
+}
+
 async function fetchWeather() {
   const lat = encodeURIComponent(weatherLat.value || "41.0082");
   const lon = encodeURIComponent(weatherLon.value || "28.9784");
   const response = await fetch(`${apiBaseUrl}/weather?lat=${lat}&lon=${lon}`, {signal: AbortSignal.timeout(30000)});
   if (!response.ok) {
-    throw new Error("Weather request failed");
+    const payload = await response.json().catch(() => ({}));
+    const error = new Error("Weather request failed");
+    error.provider = payload.detail;
+    throw error;
   }
   return response.json();
 }
@@ -417,7 +424,11 @@ async function sendWeatherCurrent() {
     feedback("weatherFeedback", data.stale ? "Eski hava verisi gösteriliyor; yenileme tekrar denenecek." : "Hava bilgisi alındı; sunucuya gönderiliyor.", Boolean(data.stale));
     sendSocketPayload({ ...data, enabled: true });
   } catch (error) {
-    feedback("weatherFeedback", "Hava bilgisi yenilenemedi. Bağlantınızı kontrol edip tekrar deneyin.", true);
+    if (error.provider && typeof error.provider === "object") {
+      showWeatherError(error.provider);
+    } else {
+      showWeatherError({ error: "provider_unavailable" });
+    }
   } finally {
     weatherLoading = false;
     refreshWeatherButton.textContent = "Havayı yenile";

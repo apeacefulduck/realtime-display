@@ -40,7 +40,7 @@ def test_reconnect_http_and_coordinates_share_429_cooldown(monkeypatch, clock):
         results = await asyncio.gather(main.weather(), main.weather(), main.weather(39,32), return_exceptions=True)
         assert all(isinstance(result, main.HTTPException) for result in results)
         assert all(result.headers['Retry-After']=='300' for result in results)
-        assert all(result.detail=='rate_limited' for result in results)
+        assert all(result.detail=={'error':'rate_limited','retryAfter':300} for result in results)
     asyncio.run(scenario())
     assert len(calls)==1
     clock[0] += 299

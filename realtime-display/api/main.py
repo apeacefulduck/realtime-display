@@ -446,7 +446,8 @@ def weather_failure(lat, lon):
     if weather_cache.get("location") == (lat, lon) and weather_cache["data"] is not None:
         return {**weather_snapshot(weather_cache["data"], failed=True),
                 "retryAfter": delay, "providerError": weather_retry.error}
-    raise HTTPException(502, weather_retry.error, headers={"Retry-After": str(delay)})
+    raise HTTPException(502, {"error": weather_retry.error, "retryAfter": delay},
+                        headers={"Retry-After": str(delay)})
 
 
 async def fetch_weather(lat: float, lon: float) -> dict[str, Any]:
